@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# ffmpeg is required by birdnet_analyzer to decode audio formats
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         libsndfile1 \
@@ -9,13 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
-# Install CPU-only TensorFlow to keep image size reasonable
-RUN pip install --no-cache-dir tensorflow-cpu && \
+
+# tflite-runtime is ~5 MB vs tensorflow-cpu ~500 MB — fits in 512 MB free tier
+RUN pip install --no-cache-dir tflite-runtime && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 
-# Render injects $PORT; default to 8080 for local use
 ENV PORT=8080
 EXPOSE 8080
 
