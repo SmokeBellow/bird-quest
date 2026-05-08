@@ -347,7 +347,7 @@ export function IdentifyPage() {
                     <div className="flex items-center justify-center gap-2 text-blue-400 text-sm font-medium">
                       <LoadingSpinner size={16} className="text-blue-400" /> Загружаю модель BirdNET…
                     </div>
-                    <p className="text-xs text-gray-500">Первый запуск занимает 1–2 минуты</p>
+                    <p className="text-xs text-gray-500">Первый запуск занимает до 5 минут</p>
                   </div>
                 )}
                 {birdNetStatus === 'available' && (
