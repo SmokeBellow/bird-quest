@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -9,10 +9,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# tflite-runtime 2.13 is ~5 MB vs tensorflow-cpu ~500 MB.
-# Python 3.10 required: tflite-runtime 2.14 (py3.11 only) removed
-# the `experimental` namespace that birdnet-analyzer depends on.
-RUN pip install --no-cache-dir "tflite-runtime==2.13.0" && \
+# tflite-runtime is ~5 MB vs tensorflow-cpu ~500 MB — fits in 512 MB free tier
+RUN pip install --no-cache-dir tflite-runtime && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .

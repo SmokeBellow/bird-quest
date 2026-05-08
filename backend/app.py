@@ -17,6 +17,23 @@ import os
 import subprocess
 import tempfile
 import threading
+import types
+
+# tflite-runtime 2.14 removed the `experimental` sub-namespace that
+# birdnet_analyzer uses (tflite.experimental.OpResolverType).
+# Restore it as a shim so birdnet_analyzer can import without error.
+try:
+    import tflite_runtime.interpreter as _tflite_interp
+    if not hasattr(_tflite_interp, 'experimental'):
+        _exp = types.SimpleNamespace()
+        if hasattr(_tflite_interp, 'OpResolverType'):
+            _exp.OpResolverType = _tflite_interp.OpResolverType
+        else:
+            # Fallback: define the constant birdnet_analyzer actually uses
+            _exp.OpResolverType = types.SimpleNamespace(BUILTIN_WITHOUT_DEFAULT_DELEGATES=1)
+        _tflite_interp.experimental = _exp
+except ImportError:
+    pass  # tflite_runtime not installed; birdnet_analyzer will fall back to tensorflow
 
 from fastapi import FastAPI, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
