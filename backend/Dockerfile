@@ -9,8 +9,10 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# tflite-runtime is ~5 MB vs tensorflow-cpu ~500 MB — fits in 512 MB free tier
-RUN pip install --no-cache-dir tflite-runtime && \
+# tflite-runtime standalone is incompatible with birdnet-analyzer model format.
+# tensorflow-cpu includes a working TFLite runtime; birdnet-analyzer falls back
+# to `from tensorflow import lite as tflite` when tflite-runtime is absent.
+RUN pip install --no-cache-dir tensorflow-cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 COPY app.py birdnet_patch.py ./
