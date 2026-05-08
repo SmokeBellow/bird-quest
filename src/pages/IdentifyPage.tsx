@@ -139,8 +139,8 @@ export function IdentifyPage() {
       } else {
         setPhotoResults(res)
       }
-    } catch {
-      setError('Ошибка при определении. Проверьте интернет-соединение.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка при определении. Проверьте интернет-соединение.')
     } finally {
       setLoading(false)
     }

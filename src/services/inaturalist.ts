@@ -17,8 +17,6 @@ interface INatTaxon {
 interface INatScoreResult {
   taxon: INatTaxon
   score: number
-  vision_score?: number
-  frequency_score?: number
 }
 
 function rarityFromConservation(status?: string): Bird['rarity'] {
@@ -30,7 +28,7 @@ function rarityFromConservation(status?: string): Bird['rarity'] {
   return 'common'
 }
 
-function taxonToBird(taxon: INatTaxon, score?: number): Bird {
+function taxonToBird(taxon: INatTaxon): Bird {
   return {
     id: `inat_${taxon.id}`,
     commonName: taxon.preferred_common_name || taxon.name,
@@ -40,8 +38,33 @@ function taxonToBird(taxon: INatTaxon, score?: number): Bird {
     wikipediaUrl: taxon.wikipedia_url,
     inaturalistId: taxon.id,
     rarity: rarityFromConservation(taxon.conservation_status?.status_name),
-    // order/family filled by separate lookup
   }
+}
+
+/** Resize + compress image to ≤1 MB JPEG for the iNaturalist Vision API. */
+async function prepareImage(file: File): Promise<Blob> {
+  const MAX = 1_000_000
+  if (file.size <= MAX && file.type === 'image/jpeg') return file
+
+  const img = new Image()
+  const blobUrl = URL.createObjectURL(file)
+  await new Promise<void>((res, rej) => {
+    img.onload = () => res()
+    img.onerror = rej
+    img.src = blobUrl
+  })
+  URL.revokeObjectURL(blobUrl)
+
+  let quality = 0.85
+  let scale = 1
+  if (file.size > MAX) scale = Math.sqrt(MAX / file.size) * 0.9
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(img.width * scale)
+  canvas.height = Math.round(img.height * scale)
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  return new Promise((res) => canvas.toBlob((b) => res(b!), 'image/jpeg', quality))
 }
 
 export async function identifyFromImage(
@@ -49,8 +72,10 @@ export async function identifyFromImage(
   lat?: number,
   lng?: number
 ): Promise<IdentifyResult[]> {
+  const image = await prepareImage(file)
+
   const formData = new FormData()
-  formData.append('image', file)
+  formData.append('image', image, 'photo.jpg')
   if (lat !== undefined) formData.append('lat', lat.toString())
   if (lng !== undefined) formData.append('lng', lng.toString())
 
@@ -58,16 +83,25 @@ export async function identifyFromImage(
     method: 'POST',
     body: formData,
   })
-  if (!res.ok) throw new Error(`iNaturalist API error: ${res.status}`)
-  const data = await res.json()
 
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    if (res.status === 401 || res.status === 403) {
+      throw new Error('iNaturalist требует авторизации — попробуй вкладку «Поиск»')
+    }
+    if (res.status === 429) {
+      throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
+    }
+    throw new Error(`iNaturalist API ошибка ${res.status}: ${text.slice(0, 100)}`)
+  }
+
+  const data = await res.json()
   const results: INatScoreResult[] = data.results || []
+
   return results
-    .filter((r) => r.taxon.iconic_taxon_name === 'Aves' || r.taxon.rank === 'species')
     .filter((r) => {
-      const name = (r.taxon.preferred_common_name || r.taxon.name || '').toLowerCase()
       const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
-      return iconic === 'aves' || name.includes('bird') || r.taxon.ancestor_ids?.includes(3)
+      return iconic === 'aves' || r.taxon.ancestor_ids?.includes(3)
     })
     .slice(0, 5)
     .map((r) => ({
