@@ -81,7 +81,7 @@ export function IdentifyPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Bird[] | null>(null)
-  const [birdNetAvailable, setBirdNetAvailable] = useState<boolean | null>(null)
+  const [birdNetAvailable, setBirdNetAvailable] = useState<'available' | 'waking' | 'unavailable' | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const recorder = useAudioRecorder()
@@ -150,7 +150,7 @@ export function IdentifyPage() {
         }
       } catch (err) {
         if (err instanceof BirdNetUnavailableError) {
-          setBirdNetAvailable(false)
+          setBirdNetAvailable('unavailable')
           setError(null)
         } else {
           setError('Ошибка анализа. Проверь, что BirdNET запущен.')
@@ -310,20 +310,29 @@ export function IdentifyPage() {
       {mode === 'sound' && (
         <div className="space-y-4">
           {/* BirdNET unavailable warning */}
-          {birdNetAvailable === false && <BirdNetSetupBanner />}
+          {birdNetAvailable === 'unavailable' && <BirdNetSetupBanner />}
 
           {/* Recorder */}
           <div className="bg-gray-900 rounded-2xl p-6 flex flex-col items-center gap-4 border border-gray-800">
             {recorder.state === 'idle' && (
               <>
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${birdNetAvailable ? 'bg-forest-900' : 'bg-gray-800'}`}>
-                  <Mic size={36} className={birdNetAvailable ? 'text-forest-400' : 'text-gray-600'} />
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${birdNetAvailable === 'available' ? 'bg-forest-900' : 'bg-gray-800'}`}>
+                  <Mic size={36} className={birdNetAvailable === 'available' ? 'text-forest-400' : 'text-gray-600'} />
                 </div>
-                {birdNetAvailable === null ? (
+                {birdNetAvailable === null && (
                   <div className="flex items-center gap-2 text-gray-400 text-sm">
                     <LoadingSpinner size={16} /> Проверяю BirdNET...
                   </div>
-                ) : birdNetAvailable ? (
+                )}
+                {birdNetAvailable === 'waking' && (
+                  <div className="text-center space-y-1">
+                    <div className="flex items-center justify-center gap-2 text-yellow-400 text-sm font-medium">
+                      <LoadingSpinner size={16} className="text-yellow-400" /> Сервер просыпается…
+                    </div>
+                    <p className="text-xs text-gray-500">Render бесплатный тариф — первый запрос до 60 сек</p>
+                  </div>
+                )}
+                {birdNetAvailable === 'available' && (
                   <>
                     <div className="text-center">
                       <p className="text-gray-200 font-medium">BirdNET готов</p>
@@ -333,14 +342,15 @@ export function IdentifyPage() {
                       Оптимально 10–20 секунд пения · местоположение улучшает точность
                     </p>
                   </>
-                ) : (
+                )}
+                {birdNetAvailable === 'unavailable' && (
                   <p className="text-gray-500 text-sm text-center">
                     Установи BirdNET для автоматического распознавания
                   </p>
                 )}
                 <button
                   onClick={recorder.start}
-                  disabled={birdNetAvailable === null}
+                  disabled={birdNetAvailable === null || birdNetAvailable === 'waking'}
                   className="px-8 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 rounded-xl font-semibold flex items-center gap-2 transition-colors"
                 >
                   <Mic size={18} /> Начать запись

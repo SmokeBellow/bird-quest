@@ -85,24 +85,32 @@ export class BirdNetUnavailableError extends Error {
   }
 }
 
-export async function checkBirdNetAvailable(): Promise<boolean> {
+// Returns: 'available' | 'waking' | 'unavailable'
+export async function checkBirdNetAvailable(): Promise<'available' | 'waking' | 'unavailable'> {
   const base = getBirdNetUrl()
+
+  // Quick check — if it responds within 5s it's warm
   try {
     const res = await fetch(`${base}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(5000),
     })
-    return res.ok
+    if (res.ok) return 'available'
   } catch {
-    // If /health doesn't exist, try root — 404 still means server is up
-    try {
-      const res = await fetch(`${base}/`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(4000),
-      })
-      return res.ok || res.status === 404
-    } catch {
-      return false
-    }
+    // fall through to slow check
+  }
+
+  // Slow check — Render free tier cold start can take up to 50s
+  try {
+    const res = await fetch(`${base}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(60000),
+    })
+    return res.ok ? 'available' : 'unavailable'
+  } catch {
+    // If no VITE_BIRDNET_URL configured at all, report as unavailable
+    if (base === '/birdnet') return 'unavailable'
+    // URL is configured but server didn't respond — it's sleeping
+    return 'waking'
   }
 }
