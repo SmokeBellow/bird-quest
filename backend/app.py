@@ -95,7 +95,7 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
                   sensitivity, locale, min_conf=0.1) -> dict[str, float]:
     cmd = [
         "python", "-m", _CLI_MODULE,
-        "--input", audio_path,
+        audio_path,          # positional INPUT argument (no flag in newer versions)
         "--output", out_dir,
         "--lat", str(lat),
         "--lon", str(lon),
@@ -105,9 +105,10 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
         "--min_conf", str(min_conf),
         "--rtype", "csv",
     ]
+    log.info("Running: %s", " ".join(cmd))
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if result.returncode != 0:
-        log.warning("birdnet stderr: %s", result.stderr[-600:])
+        log.warning("birdnet returncode=%d stderr: %s", result.returncode, result.stderr[-800:])
 
     detections: dict[str, float] = {}
     for fname in os.listdir(out_dir):
