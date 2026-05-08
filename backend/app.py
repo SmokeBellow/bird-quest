@@ -62,27 +62,11 @@ def _warm_up():
         log.error("birdnet_analyzer CLI not found — check installation")
         return
 
-    log.info("Warming up model (first run may download weights — up to 5 min)…")
-    for attempt in range(1, 4):
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                silent_wav = os.path.join(tmpdir, "silent.wav")
-                _write_silent_wav(silent_wav, duration_s=1)
-                out_dir = os.path.join(tmpdir, "out")
-                os.makedirs(out_dir)
-                # Use 5-minute timeout — first run downloads model weights
-                _run_analysis(silent_wav, out_dir, lat=-1, lon=-1, week=-1,
-                              sensitivity=1.0, locale="en", min_conf=0.01,
-                              timeout=300)
-            log.info("BirdNET model ready ✓")
-            _birdnet_ready.set()
-            return
-        except subprocess.TimeoutExpired:
-            log.warning("Warm-up attempt %d/3 timed out after 300s, retrying…", attempt)
-        except Exception as exc:
-            log.warning("Warm-up attempt %d/3 failed: %s", attempt, exc)
-
-    log.error("BirdNET warm-up failed after 3 attempts — audio identification unavailable")
+    # Mark ready immediately after CLI detection.
+    # The first real /analyze request will be slow (model loads on demand),
+    # but the app becomes available right away instead of hanging for minutes.
+    log.info("BirdNET CLI detected (%s) — marking ready ✓", _CLI_MODULE)
+    _birdnet_ready.set()
 
 
 def _write_silent_wav(path: str, duration_s: int = 1, sample_rate: int = 48000):
@@ -195,6 +179,7 @@ async def analyze(
                 audio_path, out_dir,
                 lat=lat, lon=lon, week=week,
                 sensitivity=sensitivity, locale=locale,
+                timeout=300,
             )
         except subprocess.TimeoutExpired:
             return JSONResponse(
