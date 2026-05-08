@@ -62,18 +62,27 @@ def _warm_up():
         log.error("birdnet_analyzer CLI not found — check installation")
         return
 
-    log.info("Warming up model (first run downloads weights if needed)…")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # 1-second silent WAV — just enough to trigger model load
-        silent_wav = os.path.join(tmpdir, "silent.wav")
-        _write_silent_wav(silent_wav, duration_s=1)
-        out_dir = os.path.join(tmpdir, "out")
-        os.makedirs(out_dir)
-        _run_analysis(silent_wav, out_dir, lat=-1, lon=-1, week=-1,
-                      sensitivity=1.0, locale="en", min_conf=0.01)
+    log.info("Warming up model (first run may download weights — up to 5 min)…")
+    for attempt in range(1, 4):
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                silent_wav = os.path.join(tmpdir, "silent.wav")
+                _write_silent_wav(silent_wav, duration_s=1)
+                out_dir = os.path.join(tmpdir, "out")
+                os.makedirs(out_dir)
+                # Use 5-minute timeout — first run downloads model weights
+                _run_analysis(silent_wav, out_dir, lat=-1, lon=-1, week=-1,
+                              sensitivity=1.0, locale="en", min_conf=0.01,
+                              timeout=300)
+            log.info("BirdNET model ready ✓")
+            _birdnet_ready.set()
+            return
+        except subprocess.TimeoutExpired:
+            log.warning("Warm-up attempt %d/3 timed out after 300s, retrying…", attempt)
+        except Exception as exc:
+            log.warning("Warm-up attempt %d/3 failed: %s", attempt, exc)
 
-    log.info("BirdNET model ready ✓")
-    _birdnet_ready.set()
+    log.error("BirdNET warm-up failed after 3 attempts — audio identification unavailable")
 
 
 def _write_silent_wav(path: str, duration_s: int = 1, sample_rate: int = 48000):
@@ -92,7 +101,8 @@ def _write_silent_wav(path: str, duration_s: int = 1, sample_rate: int = 48000):
 
 
 def _run_analysis(audio_path, out_dir, lat, lon, week,
-                  sensitivity, locale, min_conf=0.1) -> dict[str, float]:
+                  sensitivity, locale, min_conf=0.1,
+                  timeout=120) -> dict[str, float]:
     cmd = [
         "python", "-m", _CLI_MODULE,
         audio_path,          # positional INPUT argument (no flag in newer versions)
@@ -106,7 +116,7 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
         "--rtype", "csv",
     ]
     log.info("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         log.warning("birdnet returncode=%d stderr: %s", result.returncode, result.stderr[-800:])
 
