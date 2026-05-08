@@ -59,14 +59,17 @@ _birdnet_ready = threading.Event()
 _CLI_MODULE: str | None = None
 
 
+PATCH_SCRIPT = os.path.join(os.path.dirname(__file__), "birdnet_patch.py")
+
+
 def _detect_cli() -> str | None:
     for module in ("birdnet_analyzer.analyze", "birdnet_analyzer"):
         r = subprocess.run(
-            ["python", "-m", module, "--help"],
+            ["python", PATCH_SCRIPT, module, "--help"],
             capture_output=True, timeout=30,
         )
         if r.returncode == 0:
-            log.info("BirdNET CLI: python -m %s", module)
+            log.info("BirdNET CLI: %s (via birdnet_patch.py)", module)
             return module
     return None
 
@@ -105,7 +108,7 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
                   sensitivity, locale, min_conf=0.1,
                   timeout=120) -> dict[str, float]:
     cmd = [
-        "python", "-m", _CLI_MODULE,
+        "python", PATCH_SCRIPT, _CLI_MODULE,
         audio_path,          # positional INPUT argument (no flag in newer versions)
         "--output", out_dir,
         "--lat", str(lat),

@@ -13,7 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir tflite-runtime && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY app.py birdnet_patch.py ./
 
 ENV PORT=8080
 EXPOSE 8080
