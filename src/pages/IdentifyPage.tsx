@@ -5,7 +5,12 @@ import { useBirdStore } from '../store'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { identifyFromImage, searchBirdByName } from '../services/inaturalist'
-import { identifyFromAudio, checkBirdNetAvailable, BirdNetUnavailableError } from '../services/birdnet'
+import {
+  identifyFromAudio,
+  checkBirdNetStatus,
+  BirdNetUnavailableError,
+  type BirdNetStatus,
+} from '../services/birdnet'
 import { blobToWav } from '../utils/audioToWav'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { IdentifyResult, Bird } from '../types'
@@ -38,29 +43,18 @@ function BirdNetSetupBanner() {
         </div>
         <Info size={16} className="text-yellow-600" />
       </button>
-
       {open && (
         <div className="px-4 pb-4 space-y-2 text-sm text-gray-300 border-t border-yellow-900/50 pt-3">
           <p className="text-yellow-200 font-medium">Установка BirdNET-Analyzer (один раз):</p>
           <ol className="space-y-1.5 text-gray-400 list-decimal list-inside">
-            <li>
-              Установи <a href="https://www.python.org/downloads/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Python 3.9+</a>
-            </li>
-            <li>
-              Установи <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">ffmpeg</a> и добавь в PATH
-            </li>
+            <li>Установи <a href="https://www.python.org/downloads/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Python 3.9+</a></li>
+            <li>Установи <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">ffmpeg</a> и добавь в PATH</li>
             <li>
               В терминале:
-              <pre className="mt-1 bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto">
-{`pip install birdnet-analyzer
-python -m birdnet_analyzer.server --port 8080`}
-              </pre>
+              <pre className="mt-1 bg-gray-900 rounded p-2 text-xs font-mono overflow-x-auto">{`pip install birdnet-analyzer\npython -m birdnet_analyzer.server --port 8080`}</pre>
             </li>
-            <li>Перезапусти приложение — определение по звуку заработает автоматически</li>
+            <li>Перезапусти приложение</li>
           </ol>
-          <p className="text-gray-500 text-xs">
-            BirdNET — нейросеть от Cornell Lab, 6000+ видов, точность ~90%.
-          </p>
         </div>
       )}
     </div>
@@ -81,17 +75,42 @@ export function IdentifyPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Bird[] | null>(null)
-  const [birdNetAvailable, setBirdNetAvailable] = useState<'available' | 'waking' | 'unavailable' | null>(null)
+  const [birdNetStatus, setBirdNetStatus] = useState<BirdNetStatus | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const recorder = useAudioRecorder()
 
-  // Check if BirdNET server is running when switching to sound mode
+  const checkStatus = useCallback(() => {
+    checkBirdNetStatus().then((status) => {
+      setBirdNetStatus(status)
+      // Keep polling while loading (model initializing)
+      if (status === 'loading') return
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    })
+  }, [])
+
   useEffect(() => {
-    if (mode === 'sound' && birdNetAvailable === null) {
-      checkBirdNetAvailable().then(setBirdNetAvailable)
+    if (mode !== 'sound') return
+    if (birdNetStatus !== null && birdNetStatus !== 'loading' && birdNetStatus !== 'waking') return
+
+    checkStatus()
+
+    // Poll every 10s while loading or waking
+    if (!pollRef.current) {
+      pollRef.current = setInterval(checkStatus, 10000)
     }
-  }, [mode, birdNetAvailable])
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  }, [mode, birdNetStatus, checkStatus])
 
   const handleImageSelect = useCallback((file: File) => {
     setImageFile(file)
@@ -127,12 +146,6 @@ export function IdentifyPage() {
     }
   }
 
-  const stopAndIdentify = async () => {
-    recorder.stop()
-    // audioBlob will be available after onstop fires — wait briefly
-  }
-
-  // When recording stops and blob appears — send to BirdNET
   useEffect(() => {
     if (recorder.state !== 'stopped' || !recorder.audioBlob) return
     ;(async () => {
@@ -140,20 +153,18 @@ export function IdentifyPage() {
       setError(null)
       setSoundResults(null)
       try {
-        // Convert webm → WAV for maximum BirdNET compatibility
         const wavBlob = await blobToWav(recorder.audioBlob!)
         const detections = await identifyFromAudio(wavBlob, location?.lat, location?.lng)
         if (detections.length === 0) {
-          setError('Птица не распознана. Попробуй записать дольше (10–15 сек) или встань ближе к источнику пения.')
+          setError('Птица не распознана. Попробуй записать дольше (10–15 сек) или ближе к источнику.')
         } else {
           setSoundResults(detections)
         }
       } catch (err) {
         if (err instanceof BirdNetUnavailableError) {
-          setBirdNetAvailable('unavailable')
-          setError(null)
+          setBirdNetStatus('unavailable')
         } else {
-          setError('Ошибка анализа. Проверь, что BirdNET запущен.')
+          setError('Ошибка анализа. Проверь соединение с BirdNET сервером.')
         }
       } finally {
         setLoading(false)
@@ -189,7 +200,6 @@ export function IdentifyPage() {
     navigate(`/bird/${obs.id}`)
   }
 
-  // Build Bird from BirdNET detection (minimal, details loaded lazily on detail page)
   const birdNetResultToBird = (det: { commonName: string; scientificName: string }): Bird => ({
     id: `birdnet_${det.scientificName.replace(/\s+/g, '_').toLowerCase()}`,
     commonName: det.commonName,
@@ -208,6 +218,9 @@ export function IdentifyPage() {
     setSoundResults(null)
     setError(null)
   }
+
+  const isRecordingDisabled =
+    birdNetStatus === null || birdNetStatus === 'loading' || birdNetStatus === 'waking'
 
   return (
     <div className="p-4 max-w-lg mx-auto animate-fade-in">
@@ -262,10 +275,7 @@ export function IdentifyPage() {
           ) : (
             <div className="relative">
               <img src={preview} alt="Preview" className="w-full rounded-2xl object-cover max-h-72" />
-              <button
-                onClick={clearImage}
-                className="absolute top-2 right-2 bg-gray-900/80 rounded-full p-1.5 text-white hover:bg-gray-800"
-              >
+              <button onClick={clearImage} className="absolute top-2 right-2 bg-gray-900/80 rounded-full p-1.5 text-white hover:bg-gray-800">
                 <X size={16} />
               </button>
             </div>
@@ -309,22 +319,22 @@ export function IdentifyPage() {
       {/* ── SOUND MODE ── */}
       {mode === 'sound' && (
         <div className="space-y-4">
-          {/* BirdNET unavailable warning */}
-          {birdNetAvailable === 'unavailable' && <BirdNetSetupBanner />}
+          {birdNetStatus === 'unavailable' && <BirdNetSetupBanner />}
 
-          {/* Recorder */}
           <div className="bg-gray-900 rounded-2xl p-6 flex flex-col items-center gap-4 border border-gray-800">
             {recorder.state === 'idle' && (
               <>
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${birdNetAvailable === 'available' ? 'bg-forest-900' : 'bg-gray-800'}`}>
-                  <Mic size={36} className={birdNetAvailable === 'available' ? 'text-forest-400' : 'text-gray-600'} />
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${birdNetStatus === 'available' ? 'bg-forest-900' : 'bg-gray-800'}`}>
+                  <Mic size={36} className={birdNetStatus === 'available' ? 'text-forest-400' : 'text-gray-600'} />
                 </div>
-                {birdNetAvailable === null && (
+
+                {/* Status messages */}
+                {birdNetStatus === null && (
                   <div className="flex items-center gap-2 text-gray-400 text-sm">
-                    <LoadingSpinner size={16} /> Проверяю BirdNET...
+                    <LoadingSpinner size={16} /> Проверяю BirdNET…
                   </div>
                 )}
-                {birdNetAvailable === 'waking' && (
+                {birdNetStatus === 'waking' && (
                   <div className="text-center space-y-1">
                     <div className="flex items-center justify-center gap-2 text-yellow-400 text-sm font-medium">
                       <LoadingSpinner size={16} className="text-yellow-400" /> Сервер просыпается…
@@ -332,26 +342,29 @@ export function IdentifyPage() {
                     <p className="text-xs text-gray-500">Render бесплатный тариф — первый запрос до 60 сек</p>
                   </div>
                 )}
-                {birdNetAvailable === 'available' && (
-                  <>
-                    <div className="text-center">
-                      <p className="text-gray-200 font-medium">BirdNET готов</p>
-                      <p className="text-gray-500 text-sm mt-1">Направь микрофон на птицу и нажми запись</p>
+                {birdNetStatus === 'loading' && (
+                  <div className="text-center space-y-1">
+                    <div className="flex items-center justify-center gap-2 text-blue-400 text-sm font-medium">
+                      <LoadingSpinner size={16} className="text-blue-400" /> Загружаю модель BirdNET…
                     </div>
-                    <p className="text-xs text-gray-600 text-center">
-                      Оптимально 10–20 секунд пения · местоположение улучшает точность
-                    </p>
-                  </>
+                    <p className="text-xs text-gray-500">Первый запуск занимает 1–2 минуты</p>
+                  </div>
                 )}
-                {birdNetAvailable === 'unavailable' && (
-                  <p className="text-gray-500 text-sm text-center">
-                    Установи BirdNET для автоматического распознавания
-                  </p>
+                {birdNetStatus === 'available' && (
+                  <div className="text-center">
+                    <p className="text-gray-200 font-medium">BirdNET готов ✓</p>
+                    <p className="text-gray-500 text-sm mt-1">Направь микрофон на птицу и нажми запись</p>
+                    <p className="text-xs text-gray-600 mt-1">Оптимально 10–20 секунд пения</p>
+                  </div>
                 )}
+                {birdNetStatus === 'unavailable' && (
+                  <p className="text-gray-500 text-sm text-center">Настрой BirdNET сервер выше</p>
+                )}
+
                 <button
                   onClick={recorder.start}
-                  disabled={birdNetAvailable === null || birdNetAvailable === 'waking'}
-                  className="px-8 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 rounded-xl font-semibold flex items-center gap-2 transition-colors"
+                  disabled={isRecordingDisabled}
+                  className="px-8 py-3 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-semibold flex items-center gap-2 transition-colors"
                 >
                   <Mic size={18} /> Начать запись
                 </button>
@@ -375,7 +388,7 @@ export function IdentifyPage() {
                   <p className="text-xs text-gray-600">Ещё {5 - recorder.duration} сек для минимальной точности</p>
                 )}
                 <button
-                  onClick={stopAndIdentify}
+                  onClick={() => recorder.stop()}
                   className="px-8 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-semibold flex items-center gap-2"
                 >
                   <MicOff size={18} /> Остановить и определить
@@ -392,32 +405,26 @@ export function IdentifyPage() {
             )}
           </div>
 
-          {/* Sound results */}
           {soundResults && soundResults.length > 0 && (
             <div className="space-y-3">
               <p className="text-sm font-semibold text-gray-300">
                 BirdNET распознал {soundResults.length} вариант{soundResults.length > 1 ? 'а' : ''}:
               </p>
-              {soundResults.map((det, i) => {
-                const bird = birdNetResultToBird(det)
-                return (
-                  <button
-                    key={i}
-                    onClick={() => addBird(bird, 'sound')}
-                    className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
-                  >
-                    <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
-                      🎵
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-white truncate">{det.commonName}</p>
-                      <p className="text-xs text-gray-500 italic truncate">{det.scientificName}</p>
-                      <ConfidenceBar value={det.confidence} />
-                    </div>
-                    <CheckCircle size={20} className="text-forest-400 flex-shrink-0" />
-                  </button>
-                )
-              })}
+              {soundResults.map((det, i) => (
+                <button
+                  key={i}
+                  onClick={() => addBird(birdNetResultToBird(det), 'sound')}
+                  className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
+                >
+                  <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-xl flex-shrink-0">🎵</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white truncate">{det.commonName}</p>
+                    <p className="text-xs text-gray-500 italic truncate">{det.scientificName}</p>
+                    <ConfidenceBar value={det.confidence} />
+                  </div>
+                  <CheckCircle size={20} className="text-forest-400 flex-shrink-0" />
+                </button>
+              ))}
               <button onClick={resetSound} className="text-sm text-gray-500 underline mx-auto block">
                 Записать снова
               </button>
@@ -426,9 +433,7 @@ export function IdentifyPage() {
 
           {recorder.state === 'stopped' && !loading && !soundResults && !error && (
             <div className="text-center">
-              <button onClick={resetSound} className="text-sm text-gray-500 underline">
-                Записать снова
-              </button>
+              <button onClick={resetSound} className="text-sm text-gray-500 underline">Записать снова</button>
             </div>
           )}
         </div>

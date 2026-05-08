@@ -18,20 +18,31 @@ function getWeekNumber(date: Date): number {
   return Math.min(48, Math.max(1, week))
 }
 
-/**
- * Returns the base URL for BirdNET API calls.
- *
- * Priority:
- *   1. Value stored in localStorage by the user (Settings page)
- *   2. VITE_BIRDNET_URL build-time env variable (set in GitHub Actions secret)
- *   3. '/birdnet' — Vite dev-server proxy → localhost:8080
- */
 export function getBirdNetUrl(): string {
   const stored = localStorage.getItem('birdnet-server-url')
   if (stored) return stored.replace(/\/$/, '')
   const env = import.meta.env.VITE_BIRDNET_URL as string | undefined
   if (env) return env.replace(/\/$/, '')
   return '/birdnet'
+}
+
+export type BirdNetStatus = 'available' | 'loading' | 'waking' | 'unavailable'
+
+export async function checkBirdNetStatus(): Promise<BirdNetStatus> {
+  const base = getBirdNetUrl()
+
+  try {
+    const res = await fetch(`${base}/health`, {
+      signal: AbortSignal.timeout(60000),
+    })
+    if (!res.ok) return 'unavailable'
+    const data = await res.json()
+    return data.birdnet_ready === true ? 'available' : 'loading'
+  } catch {
+    // fetch threw — either CORS blocked, server sleeping, or no URL configured
+    if (base === '/birdnet') return 'unavailable'
+    return 'waking'
+  }
 }
 
 export async function identifyFromAudio(
@@ -82,35 +93,5 @@ export class BirdNetUnavailableError extends Error {
   constructor() {
     super('BirdNET server unavailable')
     this.name = 'BirdNetUnavailableError'
-  }
-}
-
-// Returns: 'available' | 'waking' | 'unavailable'
-export async function checkBirdNetAvailable(): Promise<'available' | 'waking' | 'unavailable'> {
-  const base = getBirdNetUrl()
-
-  // Quick check — if it responds within 5s it's warm
-  try {
-    const res = await fetch(`${base}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    })
-    if (res.ok) return 'available'
-  } catch {
-    // fall through to slow check
-  }
-
-  // Slow check — Render free tier cold start can take up to 50s
-  try {
-    const res = await fetch(`${base}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(60000),
-    })
-    return res.ok ? 'available' : 'unavailable'
-  } catch {
-    // If no VITE_BIRDNET_URL configured at all, report as unavailable
-    if (base === '/birdnet') return 'unavailable'
-    // URL is configured but server didn't respond — it's sleeping
-    return 'waking'
   }
 }
