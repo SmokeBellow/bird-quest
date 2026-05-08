@@ -16,12 +16,28 @@ export function SettingsPage() {
   )
   const [birdnetSaved, setBirdnetSaved] = useState(false)
 
+  const [inatToken, setInatToken] = useState(
+    localStorage.getItem('inat-token') || ''
+  )
+  const [inatSaved, setInatSaved] = useState(false)
+
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   const saveEbird = () => {
     setEbirdApiKey(keyInput.trim())
     setEbirdSaved(true)
     setTimeout(() => setEbirdSaved(false), 2000)
+  }
+
+  const saveInat = () => {
+    const trimmed = inatToken.trim()
+    if (trimmed) {
+      localStorage.setItem('inat-token', trimmed)
+    } else {
+      localStorage.removeItem('inat-token')
+    }
+    setInatSaved(true)
+    setTimeout(() => setInatSaved(false), 2000)
   }
 
   const saveBirdnet = () => {
@@ -80,6 +96,44 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {/* iNaturalist token */}
+      <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Key size={18} className="text-forest-400" />
+          <h2 className="font-semibold text-white">iNaturalist токен</h2>
+        </div>
+        <p className="text-sm text-gray-400 mb-3">
+          Нужен для определения птиц по фото. Токен бесплатный — просто залогинься на iNaturalist.
+        </p>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="password"
+            value={inatToken}
+            onChange={(e) => { setInatToken(e.target.value); setInatSaved(false) }}
+            placeholder="Вставь JWT токен сюда..."
+            className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-forest-600 font-mono"
+          />
+          <button
+            onClick={saveInat}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1.5 ${
+              inatSaved ? 'bg-green-700 text-white' : 'bg-forest-700 hover:bg-forest-600 text-white'
+            }`}
+          >
+            <Save size={14} />
+            {inatSaved ? 'OK!' : 'Сохранить'}
+          </button>
+        </div>
+        <a
+          href="https://www.inaturalist.org/users/api_token"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-sm text-forest-400 hover:text-forest-300"
+        >
+          <ExternalLink size={14} />
+          Получить токен на inaturalist.org
+        </a>
+      </div>
+
       {/* eBird API */}
       <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 mb-4">
         <div className="flex items-center gap-2 mb-3">
@@ -123,7 +177,7 @@ export function SettingsPage() {
         <h2 className="font-semibold text-white mb-3">Используемые сервисы</h2>
         <div className="space-y-2 text-sm text-gray-400">
           {[
-            ['iNaturalist Vision (фото)', true],
+            ['iNaturalist Vision (фото)', !!inatToken],
             ['Wikipedia (описания)', true],
             ['Xeno-canto (звуки птиц)', true],
             ['BirdNET (определение по пению)', !!activeUrl],

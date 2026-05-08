@@ -79,15 +79,19 @@ export async function identifyFromImage(
   if (lat !== undefined) formData.append('lat', lat.toString())
   if (lng !== undefined) formData.append('lng', lng.toString())
 
+  const token = localStorage.getItem('inat-token')
+  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+
   const res = await fetch(`${BASE}/computervision/score_image`, {
     method: 'POST',
+    headers,
     body: formData,
   })
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     if (res.status === 401 || res.status === 403) {
-      throw new Error('iNaturalist требует авторизации — попробуй вкладку «Поиск»')
+      throw new Error('iNaturalist требует токен. Получи его на inaturalist.org/users/api_token и добавь в Настройки.')
     }
     if (res.status === 429) {
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
