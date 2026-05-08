@@ -95,8 +95,8 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
                   sensitivity, locale, min_conf=0.1) -> dict[str, float]:
     cmd = [
         "python", "-m", _CLI_MODULE,
-        "--i", audio_path,
-        "--o", out_dir,
+        "--input", audio_path,
+        "--output", out_dir,
         "--lat", str(lat),
         "--lon", str(lon),
         "--week", str(week),
