@@ -14,13 +14,16 @@ const tabs = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const newAchievements = useBirdStore((s) => s.newAchievements)
   const newPlantAchievements = useBirdStore((s) => s.newPlantAchievements)
+  const newFungusAchievements = useBirdStore((s) => s.newFungusAchievements)
   const dismissBird = useBirdStore((s) => s.dismissNewAchievements)
   const dismissPlant = useBirdStore((s) => s.dismissNewPlantAchievements)
-  const unlockedBirdCount = useBirdStore((s) => s.unlockedAchievements.length)
-  const unlockedPlantCount = useBirdStore((s) => s.unlockedPlantAchievements.length)
-  const unlockedCount = unlockedBirdCount + unlockedPlantCount
-  const dismiss = () => { dismissBird(); dismissPlant() }
-  const allNew = [...newAchievements, ...newPlantAchievements]
+  const dismissFungus = useBirdStore((s) => s.dismissNewFungusAchievements)
+  const unlockedCount =
+    useBirdStore((s) => s.unlockedAchievements.length) +
+    useBirdStore((s) => s.unlockedPlantAchievements.length) +
+    useBirdStore((s) => s.unlockedFungusAchievements.length)
+  const dismiss = () => { dismissBird(); dismissPlant(); dismissFungus() }
+  const allNew = [...newAchievements, ...newPlantAchievements, ...newFungusAchievements]
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-950 text-white">

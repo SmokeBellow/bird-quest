@@ -5,11 +5,12 @@ import { BirdCard } from '../components/BirdCard'
 import { Search, Grid, List, TrendingUp, Trash2 } from 'lucide-react'
 import { ACHIEVEMENTS } from '../achievements/definitions'
 import { PLANT_ACHIEVEMENTS } from '../achievements/plantDefinitions'
-import type { PlantObservation } from '../types'
+import { FUNGUS_ACHIEVEMENTS } from '../achievements/fungusDefinitions'
+import type { PlantObservation, FungusObservation } from '../types'
 
 type Sort = 'date' | 'name' | 'rarity'
 type View = 'list' | 'grid'
-type Tab = 'bird' | 'plant'
+type Tab = 'bird' | 'plant' | 'fungus'
 
 function StatBadge({ label, value }: { label: string; value: number | string }) {
   return (
@@ -79,7 +80,6 @@ function PlantCollectionTab() {
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp size={14} className="text-emerald-400" />
             <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Семейств: {stats.families.length}</span>
-            {stats.fungi > 0 && <span className="ml-auto text-xs text-gray-400">🍄 {stats.fungi} гриб{stats.fungi > 1 ? 'а' : ''}</span>}
           </div>
         </div>
       )}
@@ -114,7 +114,7 @@ function PlantCollectionTab() {
                 <img src={obs.plant.thumbnailUrl} alt={obs.plant.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
               ) : (
                 <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">
-                  {(obs.plant.iconic || '').toLowerCase() === 'fungi' ? '🍄' : '🌿'}
+                  🌿
                 </div>
               )}
               <div className="flex-1 min-w-0">
@@ -150,10 +150,132 @@ function PlantCollectionTab() {
                 <img src={obs.plant.thumbnailUrl} alt={obs.plant.commonName} className="w-full aspect-square rounded-lg object-cover" />
               ) : (
                 <div className="w-full aspect-square rounded-lg bg-gray-800 flex items-center justify-center text-3xl">
-                  {(obs.plant.iconic || '').toLowerCase() === 'fungi' ? '🍄' : '🌿'}
+                  🌿
                 </div>
               )}
               <p className="text-xs text-center text-gray-300 leading-tight line-clamp-2">{obs.plant.commonName}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FungusCollectionTab() {
+  const fungusObservations = useBirdStore((s) => s.fungusObservations)
+  const removeFungusObservation = useBirdStore((s) => s.removeFungusObservation)
+  const getFungusStats = useBirdStore((s) => s.getFungusStats)
+  const unlockedFungusAchievements = useBirdStore((s) => s.unlockedFungusAchievements)
+  const stats = getFungusStats()
+  const [query, setQuery] = useState('')
+  const [view, setView] = useState<View>('list')
+
+  const uniqueFungi = useMemo(() => {
+    const seen = new Map<string, FungusObservation>()
+    for (const obs of [...fungusObservations].reverse()) {
+      if (!seen.has(obs.fungus.id)) seen.set(obs.fungus.id, obs)
+    }
+    return [...seen.values()].reverse()
+  }, [fungusObservations])
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase()
+    return uniqueFungi.filter(
+      (o) => !q || o.fungus.commonName.toLowerCase().includes(q) || o.fungus.scientificName.toLowerCase().includes(q)
+    )
+  }, [uniqueFungi, query])
+
+  if (fungusObservations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <span className="text-6xl mb-4">🍄</span>
+        <h2 className="text-lg font-bold text-white mb-2">Коллекция грибов пуста</h2>
+        <p className="text-gray-400 text-sm">Определи гриб по фото — выбери 🍄 на странице «Определить»</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Видов', value: stats.uniqueSpecies },
+          { label: 'Наблюдений', value: stats.totalFungi },
+          { label: 'Ачивок', value: `${unlockedFungusAchievements.length}/${FUNGUS_ACHIEVEMENTS.length}` },
+        ].map(({ label, value }) => (
+          <div key={label} className="flex flex-col items-center bg-gray-900 rounded-xl p-3 border border-gray-800">
+            <span className="text-2xl font-bold text-amber-400">{value}</span>
+            <span className="text-xs text-gray-500 text-center mt-0.5">{label}</span>
+          </div>
+        ))}
+      </div>
+      {stats.families.length > 0 && (
+        <div className="bg-gray-900 rounded-xl p-3 border border-gray-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={14} className="text-amber-400" />
+            <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Семейств: {stats.families.length}</span>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по названию..."
+            className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-9 pr-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-amber-600"
+          />
+        </div>
+        <button
+          onClick={() => setView(view === 'list' ? 'grid' : 'list')}
+          className="p-2 bg-gray-900 border border-gray-700 rounded-xl text-gray-400 hover:text-white transition-colors"
+        >
+          {view === 'list' ? <Grid size={18} /> : <List size={18} />}
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">{filtered.length} видов</p>
+      {view === 'list' ? (
+        <div className="space-y-2">
+          {filtered.map((obs) => (
+            <div key={obs.id} className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800">
+              {obs.fungus.thumbnailUrl ? (
+                <img src={obs.fungus.thumbnailUrl} alt={obs.fungus.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🍄</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white truncate">{obs.fungus.commonName}</p>
+                <p className="text-xs text-gray-500 italic truncate">{obs.fungus.scientificName}</p>
+                {obs.fungus.family && <p className="text-xs text-amber-700 truncate">{obs.fungus.family}</p>}
+                <p className="text-xs text-gray-600 mt-0.5">
+                  {new Date(obs.observedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {obs.confidence !== undefined && <span className="ml-2 text-amber-700">{Math.round(obs.confidence * 100)}%</span>}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                {obs.fungus.wikipediaUrl && (
+                  <a href={obs.fungus.wikipediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline">Wiki</a>
+                )}
+                <button onClick={() => removeFungusObservation(obs.id)} className="text-gray-600 hover:text-red-400 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {filtered.map((obs) => (
+            <div key={obs.id} className="flex flex-col items-center bg-gray-900 rounded-xl p-2 border border-gray-800 gap-1">
+              {obs.fungus.thumbnailUrl ? (
+                <img src={obs.fungus.thumbnailUrl} alt={obs.fungus.commonName} className="w-full aspect-square rounded-lg object-cover" />
+              ) : (
+                <div className="w-full aspect-square rounded-lg bg-gray-800 flex items-center justify-center text-3xl">🍄</div>
+              )}
+              <p className="text-xs text-center text-gray-300 leading-tight line-clamp-2">{obs.fungus.commonName}</p>
             </div>
           ))}
         </div>
@@ -210,22 +332,24 @@ export function CollectionPage() {
       <h1 className="text-2xl font-bold text-white mb-4">Моя коллекция</h1>
 
       {/* Tab toggle */}
-      <div className="flex gap-2 bg-gray-900 p-1 rounded-xl mb-5">
-        <button
-          onClick={() => setTab('bird')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'bird' ? 'bg-forest-700 text-white' : 'text-gray-400 hover:text-white'}`}
-        >
-          🐦 Птицы
-        </button>
-        <button
-          onClick={() => setTab('plant')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'plant' ? 'bg-emerald-700 text-white' : 'text-gray-400 hover:text-white'}`}
-        >
-          🌿 Растения
-        </button>
+      <div className="flex gap-1 bg-gray-900 p-1 rounded-xl mb-5">
+        {([
+          { id: 'bird', label: '🐦 Птицы', active: 'bg-forest-700' },
+          { id: 'plant', label: '🌿 Растения', active: 'bg-emerald-700' },
+          { id: 'fungus', label: '🍄 Грибы', active: 'bg-amber-700' },
+        ] as const).map(({ id, label, active }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${tab === id ? `${active} text-white` : 'text-gray-400 hover:text-white'}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {tab === 'plant' && <PlantCollectionTab />}
+      {tab === 'fungus' && <FungusCollectionTab />}
       {tab === 'bird' && observations.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <span className="text-6xl mb-4">🐦</span>

@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ObservedBird, Achievement, UserStats, GeoLocation, Bird, PlantObservation, PlantStats, Plant } from '../types'
+import type { ObservedBird, Achievement, UserStats, GeoLocation, Bird, PlantObservation, PlantStats, Plant, FungusObservation, FungusStats, Fungus } from '../types'
 import { ACHIEVEMENTS } from '../achievements/definitions'
 import { PLANT_ACHIEVEMENTS } from '../achievements/plantDefinitions'
+import { FUNGUS_ACHIEVEMENTS } from '../achievements/fungusDefinitions'
 
 interface BirdStore {
   observations: ObservedBird[]
@@ -11,6 +12,9 @@ interface BirdStore {
   plantObservations: PlantObservation[]
   unlockedPlantAchievements: Achievement[]
   newPlantAchievements: Achievement[]
+  fungusObservations: FungusObservation[]
+  unlockedFungusAchievements: Achievement[]
+  newFungusAchievements: Achievement[]
   location: GeoLocation | null
   ebirdApiKey: string
 
@@ -18,14 +22,19 @@ interface BirdStore {
   removeObservation: (id: string) => void
   addPlantObservation: (obs: PlantObservation) => void
   removePlantObservation: (id: string) => void
+  addFungusObservation: (obs: FungusObservation) => void
+  removeFungusObservation: (id: string) => void
   setLocation: (loc: GeoLocation) => void
   setEbirdApiKey: (key: string) => void
   dismissNewAchievements: () => void
   dismissNewPlantAchievements: () => void
+  dismissNewFungusAchievements: () => void
   getStats: () => UserStats
   getPlantStats: () => PlantStats
+  getFungusStats: () => FungusStats
   hasObserved: (birdId: string) => boolean
   hasObservedPlant: (plantId: string) => boolean
+  hasObservedFungus: (fungusId: string) => boolean
   updateBirdInfo: (birdId: string, info: Partial<Bird>) => void
 }
 
@@ -97,6 +106,17 @@ function computeStats(observations: ObservedBird[]): UserStats {
   }
 }
 
+function computeNatureStreak(dates: string[]): number {
+  if (dates.length === 0) return 0
+  let cur = 1
+  for (let i = 1; i < dates.length; i++) {
+    const diff = (new Date(dates[i]).getTime() - new Date(dates[i - 1]).getTime()) / 86400000
+    if (diff === 1) cur++
+    else cur = 1
+  }
+  return cur
+}
+
 function computePlantStats(observations: PlantObservation[]): PlantStats {
   const uniqueSpeciesMap = new Map<string, Plant>()
   for (const obs of observations) {
@@ -105,38 +125,52 @@ function computePlantStats(observations: PlantObservation[]): PlantStats {
   const families = [...new Set(observations.map((o) => o.plant.family).filter(Boolean) as string[])]
   const locationSet = new Set<string>()
   for (const obs of observations) {
-    if (obs.location) {
-      const key = `${obs.location.lat.toFixed(2)},${obs.location.lng.toFixed(2)}`
-      locationSet.add(key)
-    }
+    if (obs.location) locationSet.add(`${obs.location.lat.toFixed(2)},${obs.location.lng.toFixed(2)}`)
   }
   let earlyMorning = 0, lateNight = 0
   for (const obs of observations) {
-    const hour = new Date(obs.observedAt).getHours()
-    if (hour < 7) earlyMorning++
-    if (hour >= 23) lateNight++
+    const h = new Date(obs.observedAt).getHours()
+    if (h < 7) earlyMorning++
+    if (h >= 23) lateNight++
   }
-  const fungi = observations.filter((o) => (o.plant.iconic || '').toLowerCase() === 'fungi').length
   const days = [...new Set(observations.map((o) => o.observedAt.slice(0, 10)))].sort()
-  let streak = 0
-  if (days.length > 0) {
-    let cur = 1
-    for (let i = 1; i < days.length; i++) {
-      const diff = (new Date(days[i]).getTime() - new Date(days[i - 1]).getTime()) / 86400000
-      if (diff === 1) cur++
-      else cur = 1
-    }
-    streak = cur
-  }
   return {
     totalPlants: observations.length,
     uniqueSpecies: uniqueSpeciesMap.size,
     earlyMorning,
     lateNight,
-    streak,
+    streak: computeNatureStreak(days),
     locations: [...locationSet],
     families,
-    fungi,
+    observations,
+  }
+}
+
+function computeFungusStats(observations: FungusObservation[]): FungusStats {
+  const uniqueSpeciesMap = new Map<string, Fungus>()
+  for (const obs of observations) {
+    if (!uniqueSpeciesMap.has(obs.fungus.id)) uniqueSpeciesMap.set(obs.fungus.id, obs.fungus)
+  }
+  const families = [...new Set(observations.map((o) => o.fungus.family).filter(Boolean) as string[])]
+  const locationSet = new Set<string>()
+  for (const obs of observations) {
+    if (obs.location) locationSet.add(`${obs.location.lat.toFixed(2)},${obs.location.lng.toFixed(2)}`)
+  }
+  let earlyMorning = 0, lateNight = 0
+  for (const obs of observations) {
+    const h = new Date(obs.observedAt).getHours()
+    if (h < 7) earlyMorning++
+    if (h >= 23) lateNight++
+  }
+  const days = [...new Set(observations.map((o) => o.observedAt.slice(0, 10)))].sort()
+  return {
+    totalFungi: observations.length,
+    uniqueSpecies: uniqueSpeciesMap.size,
+    earlyMorning,
+    lateNight,
+    streak: computeNatureStreak(days),
+    locations: [...locationSet],
+    families,
     observations,
   }
 }
@@ -156,19 +190,18 @@ function checkNewAchievements(
   return newOnes
 }
 
-function checkNewPlantAchievements(
-  stats: PlantStats,
-  already: Achievement[]
-): Achievement[] {
+function checkNewPlantAchievements(stats: PlantStats, already: Achievement[]): Achievement[] {
   const alreadyIds = new Set(already.map((a) => a.id))
-  const newOnes: Achievement[] = []
-  for (const def of PLANT_ACHIEVEMENTS) {
-    if (!alreadyIds.has(def.id) && def.condition(stats)) {
-      const { condition: _c, ...ach } = def
-      newOnes.push({ ...ach, unlockedAt: new Date().toISOString() })
-    }
-  }
-  return newOnes
+  return PLANT_ACHIEVEMENTS
+    .filter((def) => !alreadyIds.has(def.id) && def.condition(stats))
+    .map(({ condition: _c, ...ach }) => ({ ...ach, unlockedAt: new Date().toISOString() }))
+}
+
+function checkNewFungusAchievements(stats: FungusStats, already: Achievement[]): Achievement[] {
+  const alreadyIds = new Set(already.map((a) => a.id))
+  return FUNGUS_ACHIEVEMENTS
+    .filter((def) => !alreadyIds.has(def.id) && def.condition(stats))
+    .map(({ condition: _c, ...ach }) => ({ ...ach, unlockedAt: new Date().toISOString() }))
 }
 
 export const useBirdStore = create<BirdStore>()(
@@ -180,6 +213,9 @@ export const useBirdStore = create<BirdStore>()(
       plantObservations: [],
       unlockedPlantAchievements: [],
       newPlantAchievements: [],
+      fungusObservations: [],
+      unlockedFungusAchievements: [],
+      newFungusAchievements: [],
       location: null,
       ebirdApiKey: '',
 
@@ -229,13 +265,38 @@ export const useBirdStore = create<BirdStore>()(
 
       dismissNewPlantAchievements: () => set({ newPlantAchievements: [] }),
 
+      dismissNewFungusAchievements: () => set({ newFungusAchievements: [] }),
+
+      addFungusObservation: (obs) => {
+        set((state) => {
+          const fungusObservations = [...state.fungusObservations, obs]
+          const stats = computeFungusStats(fungusObservations)
+          const newAchs = checkNewFungusAchievements(stats, state.unlockedFungusAchievements)
+          return {
+            fungusObservations,
+            unlockedFungusAchievements: [...state.unlockedFungusAchievements, ...newAchs],
+            newFungusAchievements: [...state.newFungusAchievements, ...newAchs],
+          }
+        })
+      },
+
+      removeFungusObservation: (id) => {
+        set((state) => ({
+          fungusObservations: state.fungusObservations.filter((o) => o.id !== id),
+        }))
+      },
+
       getStats: () => computeStats(get().observations),
 
       getPlantStats: () => computePlantStats(get().plantObservations),
 
+      getFungusStats: () => computeFungusStats(get().fungusObservations),
+
       hasObserved: (birdId) => get().observations.some((o) => o.bird.id === birdId),
 
       hasObservedPlant: (plantId) => get().plantObservations.some((o) => o.plant.id === plantId),
+
+      hasObservedFungus: (fungusId) => get().fungusObservations.some((o) => o.fungus.id === fungusId),
 
       updateBirdInfo: (birdId, info) => {
         set((state) => ({

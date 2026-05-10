@@ -10,7 +10,6 @@ export interface PlantResult {
   wikipediaUrl?: string
   confidence: number
   family?: string
-  iconic?: string  // iconic_taxon_name: 'Plantae' | 'Fungi'
 }
 
 const INAT_BASE = 'https://api.inaturalist.org/v1'
@@ -134,6 +133,18 @@ export async function identifyFromImage(
   }))
 }
 
+function scoreResultToPlantResult(r: INatScoreResult, normalizedScore: number): PlantResult {
+  return {
+    id: `inat_${r.taxon.id}`,
+    commonName: r.taxon.preferred_common_name || r.taxon.name,
+    scientificName: r.taxon.name,
+    thumbnailUrl: r.taxon.default_photo?.square_url || r.taxon.default_photo?.url,
+    imageUrl: r.taxon.default_photo?.medium_url,
+    wikipediaUrl: r.taxon.wikipedia_url,
+    confidence: normalizedScore,
+  }
+}
+
 export async function identifyPlantFromImage(
   file: File,
   lat?: number,
@@ -143,26 +154,27 @@ export async function identifyPlantFromImage(
   const filtered = results
     .filter((r) => {
       const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
-      return (
-        iconic === 'plantae' ||
-        iconic === 'fungi' ||
-        r.taxon.ancestor_ids?.includes(47126) || // Plantae
-        r.taxon.ancestor_ids?.includes(47170)    // Fungi
-      )
+      return iconic === 'plantae' || r.taxon.ancestor_ids?.includes(47126)
     })
     .slice(0, 5)
-
   const total = filtered.reduce((sum, r) => sum + r.score, 0)
-  return filtered.map((r) => ({
-    id: `inat_${r.taxon.id}`,
-    commonName: r.taxon.preferred_common_name || r.taxon.name,
-    scientificName: r.taxon.name,
-    thumbnailUrl: r.taxon.default_photo?.square_url || r.taxon.default_photo?.url,
-    imageUrl: r.taxon.default_photo?.medium_url,
-    wikipediaUrl: r.taxon.wikipedia_url,
-    confidence: total > 0 ? r.score / total : r.score,
-    iconic: r.taxon.iconic_taxon_name,
-  }))
+  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? r.score / total : r.score))
+}
+
+export async function identifyFungusFromImage(
+  file: File,
+  lat?: number,
+  lng?: number
+): Promise<PlantResult[]> {
+  const results = await fetchVisionResults(file, lat, lng)
+  const filtered = results
+    .filter((r) => {
+      const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
+      return iconic === 'fungi' || r.taxon.ancestor_ids?.includes(47170)
+    })
+    .slice(0, 5)
+  const total = filtered.reduce((sum, r) => sum + r.score, 0)
+  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? r.score / total : r.score))
 }
 
 export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bird>> {

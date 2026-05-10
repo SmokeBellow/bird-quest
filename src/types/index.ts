@@ -82,7 +82,6 @@ export interface Plant {
   imageUrl?: string
   wikipediaUrl?: string
   family?: string
-  iconic?: string  // 'Plantae' | 'Fungi'
 }
 
 export interface PlantObservation {
@@ -102,8 +101,37 @@ export interface PlantStats {
   streak: number
   locations: string[]
   families: string[]
-  fungi: number
   observations: PlantObservation[]
+}
+
+export interface Fungus {
+  id: string
+  commonName: string
+  scientificName: string
+  thumbnailUrl?: string
+  imageUrl?: string
+  wikipediaUrl?: string
+  family?: string
+}
+
+export interface FungusObservation {
+  id: string
+  fungus: Fungus
+  observedAt: string
+  location?: GeoLocation
+  imageUrl?: string
+  confidence?: number
+}
+
+export interface FungusStats {
+  totalFungi: number
+  uniqueSpecies: number
+  earlyMorning: number
+  lateNight: number
+  streak: number
+  locations: string[]
+  families: string[]
+  observations: FungusObservation[]
 }
 
 export interface NearbyBird {

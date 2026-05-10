@@ -3,11 +3,12 @@ import { useBirdStore } from '../store'
 import { AchievementCard } from '../components/AchievementCard'
 import { ACHIEVEMENTS } from '../achievements/definitions'
 import { PLANT_ACHIEVEMENTS } from '../achievements/plantDefinitions'
+import { FUNGUS_ACHIEVEMENTS } from '../achievements/fungusDefinitions'
 import { Trophy } from 'lucide-react'
 
 type Filter = 'all' | 'unlocked' | 'locked'
 type Category = 'all' | string
-type Tab = 'bird' | 'plant'
+type Tab = 'bird' | 'plant' | 'fungus'
 
 const categoryLabel: Record<string, string> = {
   all: 'Все',
@@ -24,14 +25,21 @@ const rarityOrder = { platinum: 0, gold: 1, silver: 2, bronze: 3 }
 export function AchievementsPage() {
   const unlockedAchievements = useBirdStore((s) => s.unlockedAchievements)
   const unlockedPlantAchievements = useBirdStore((s) => s.unlockedPlantAchievements)
+  const unlockedFungusAchievements = useBirdStore((s) => s.unlockedFungusAchievements)
 
   const [tab, setTab] = useState<Tab>('bird')
 
   const [filter, setFilter] = useState<Filter>('all')
   const [category, setCategory] = useState<Category>('all')
 
-  const activeUnlocked = tab === 'bird' ? unlockedAchievements : unlockedPlantAchievements
-  const activeAchievements = tab === 'bird' ? ACHIEVEMENTS : PLANT_ACHIEVEMENTS
+  const activeUnlocked =
+    tab === 'bird' ? unlockedAchievements
+    : tab === 'plant' ? unlockedPlantAchievements
+    : unlockedFungusAchievements
+  const activeAchievements =
+    tab === 'bird' ? ACHIEVEMENTS
+    : tab === 'plant' ? PLANT_ACHIEVEMENTS
+    : FUNGUS_ACHIEVEMENTS
 
   const unlockedIds = new Set(activeUnlocked.map((a) => a.id))
   const totalPoints = activeUnlocked.reduce((sum, a) => sum + a.points, 0)
@@ -61,19 +69,20 @@ export function AchievementsPage() {
       <p className="text-gray-400 text-sm mb-4">Открой их все — исследуй мир природы</p>
 
       {/* Tab toggle */}
-      <div className="flex gap-2 bg-gray-900 p-1 rounded-xl mb-5">
-        <button
-          onClick={() => { setTab('bird'); setFilter('all'); setCategory('all') }}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'bird' ? 'bg-forest-700 text-white' : 'text-gray-400 hover:text-white'}`}
-        >
-          🐦 Птицы
-        </button>
-        <button
-          onClick={() => { setTab('plant'); setFilter('all'); setCategory('all') }}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'plant' ? 'bg-emerald-700 text-white' : 'text-gray-400 hover:text-white'}`}
-        >
-          🌿 Растения
-        </button>
+      <div className="flex gap-1 bg-gray-900 p-1 rounded-xl mb-5">
+        {([
+          { id: 'bird', label: '🐦 Птицы', active: 'bg-forest-700' },
+          { id: 'plant', label: '🌿 Растения', active: 'bg-emerald-700' },
+          { id: 'fungus', label: '🍄 Грибы', active: 'bg-amber-700' },
+        ] as const).map(({ id, label, active }) => (
+          <button
+            key={id}
+            onClick={() => { setTab(id); setFilter('all'); setCategory('all') }}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${tab === id ? `${active} text-white` : 'text-gray-400 hover:text-white'}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Progress */}
