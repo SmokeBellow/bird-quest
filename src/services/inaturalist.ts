@@ -1,6 +1,7 @@
 import type { Bird, IdentifyResult } from '../types'
+import { getBirdNetUrl } from './birdnet'
 
-const BASE = 'https://api.inaturalist.org/v1'
+const INAT_BASE = 'https://api.inaturalist.org/v1'
 
 interface INatTaxon {
   id: number
@@ -79,24 +80,23 @@ export async function identifyFromImage(
   if (lat !== undefined) formData.append('lat', lat.toString())
   if (lng !== undefined) formData.append('lng', lng.toString())
 
-  const token = localStorage.getItem('inat-token')
-  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-
-  const res = await fetch(`${BASE}/computervision/score_image`, {
+  const res = await fetch(`${getBirdNetUrl()}/identify/image`, {
     method: 'POST',
-    headers,
     body: formData,
   })
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
+    if (res.status === 503) {
+      throw new Error('Сервис определения по фото недоступен — токен iNaturalist не настроен на сервере.')
+    }
     if (res.status === 401 || res.status === 403) {
-      throw new Error('iNaturalist требует токен. Получи его на inaturalist.org/users/api_token и добавь в Настройки.')
+      throw new Error('Ошибка авторизации iNaturalist. Обратитесь к администратору.')
     }
     if (res.status === 429) {
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
     }
-    throw new Error(`iNaturalist API ошибка ${res.status}: ${text.slice(0, 100)}`)
+    throw new Error(`Ошибка сервера ${res.status}: ${text.slice(0, 100)}`)
   }
 
   const data = await res.json()
@@ -116,7 +116,7 @@ export async function identifyFromImage(
 }
 
 export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bird>> {
-  const res = await fetch(`${BASE}/taxa/${inaturalistId}`)
+  const res = await fetch(`${INAT_BASE}/taxa/${inaturalistId}`)
   if (!res.ok) return {}
   const data = await res.json()
   const taxon = data.results?.[0] as INatTaxon | undefined
@@ -126,7 +126,7 @@ export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bir
   let family = ''
   if (taxon.ancestor_ids) {
     const ancestorsRes = await fetch(
-      `${BASE}/taxa?id=${taxon.ancestor_ids.slice(-10).join(',')}&per_page=30`
+      `${INAT_BASE}/taxa?id=${taxon.ancestor_ids.slice(-10).join(',')}&per_page=30`
     )
     if (ancestorsRes.ok) {
       const ancestorsData = await ancestorsRes.json()
@@ -148,7 +148,7 @@ export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bir
 
 export async function searchBirdByName(query: string): Promise<Bird[]> {
   const res = await fetch(
-    `${BASE}/taxa?q=${encodeURIComponent(query)}&iconic_taxa=Aves&rank=species&per_page=10&locale=ru`
+    `${INAT_BASE}/taxa?q=${encodeURIComponent(query)}&iconic_taxa=Aves&rank=species&per_page=10&locale=ru`
   )
   if (!res.ok) return []
   const data = await res.json()

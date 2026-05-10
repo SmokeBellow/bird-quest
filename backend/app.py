@@ -35,9 +35,15 @@ try:
 except ImportError:
     pass  # tflite_runtime not installed; birdnet_analyzer will fall back to tensorflow
 
-from fastapi import FastAPI, Form, UploadFile
+import httpx
+
+from fastapi import FastAPI, Form, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+
+# Service tokens — set as environment variables on Render
+INAT_TOKEN = os.environ.get("INAT_TOKEN", "")
+EBIRD_API_KEY = os.environ.get("EBIRD_API_KEY", "")
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -210,5 +216,110 @@ async def analyze(
 
     return JSONResponse(
         {"msg": "Success.", "results": {"detections": detections}},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# iNaturalist Vision proxy — service token stays on the server
+# ---------------------------------------------------------------------------
+
+@app.post("/identify/image")
+async def identify_image(
+    image: UploadFile,
+    lat: float = Form(None),
+    lng: float = Form(None),
+):
+    if not INAT_TOKEN:
+        return JSONResponse(
+            {"error": "iNaturalist token not configured on server"},
+            status_code=503,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    image_bytes = await image.read()
+    files = {"image": ("photo.jpg", image_bytes, "image/jpeg")}
+    data: dict = {}
+    if lat is not None:
+        data["lat"] = str(lat)
+    if lng is not None:
+        data["lng"] = str(lng)
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.inaturalist.org/v1/computervision/score_image",
+            headers={"Authorization": f"Bearer {INAT_TOKEN}"},
+            files=files,
+            data=data,
+        )
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# eBird proxy — service API key stays on the server
+# ---------------------------------------------------------------------------
+
+@app.get("/nearby")
+async def nearby(
+    lat: float = Query(...),
+    lng: float = Query(...),
+    dist: float = Query(25),
+    back: int = Query(14),
+):
+    if not EBIRD_API_KEY:
+        return JSONResponse(
+            {"error": "eBird API key not configured on server"},
+            status_code=503,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            "https://api.ebird.org/v2/data/obs/geo/recent",
+            params={"lat": lat, "lng": lng, "dist": dist, "back": back, "maxResults": 100},
+            headers={"X-eBirdApiToken": EBIRD_API_KEY},
+        )
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
+@app.get("/ebird/taxonomy")
+async def ebird_taxonomy(species: str = Query(...)):
+    if not EBIRD_API_KEY:
+        return JSONResponse([], headers={"Access-Control-Allow-Origin": "*"})
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            "https://api.ebird.org/v2/ref/taxonomy/ebird",
+            params={"species": species, "fmt": "json"},
+            headers={"X-eBirdApiToken": EBIRD_API_KEY},
+        )
+    return Response(
+        content=resp.content if resp.is_success else b"[]",
+        status_code=200,
+        media_type="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
+@app.get("/ebird/spplist/{lat}/{lng}")
+async def ebird_spplist(lat: float, lng: float, dist: float = Query(50)):
+    if not EBIRD_API_KEY:
+        return JSONResponse([], headers={"Access-Control-Allow-Origin": "*"})
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"https://api.ebird.org/v2/product/spplist/{lat:.2f}/{lng:.2f}",
+            params={"dist": dist},
+            headers={"X-eBirdApiToken": EBIRD_API_KEY},
+        )
+    return Response(
+        content=resp.content if resp.is_success else b"[]",
+        status_code=200,
+        media_type="application/json",
         headers={"Access-Control-Allow-Origin": "*"},
     )

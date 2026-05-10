@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapPin, RefreshCw, Bird, AlertCircle } from 'lucide-react'
+import { MapPin, RefreshCw, Bird } from 'lucide-react'
 import { useBirdStore } from '../store'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { getNearbyObservations } from '../services/ebird'
@@ -17,7 +17,6 @@ function formatTimeSince(dateStr: string) {
 
 export function NearbyPage() {
   const location = useGeolocation()
-  const ebirdApiKey = useBirdStore((s) => s.ebirdApiKey)
   const hasObserved = useBirdStore((s) => s.hasObserved)
   const observations = useBirdStore((s) => s.observations)
 
@@ -28,11 +27,10 @@ export function NearbyPage() {
 
   const fetchNearby = async () => {
     if (!location) { setError('Геолокация недоступна'); return }
-    if (!ebirdApiKey) { setError('Введи API ключ eBird в настройках'); return }
     setLoading(true)
     setError(null)
     try {
-      const data = await getNearbyObservations(location.lat, location.lng, ebirdApiKey)
+      const data = await getNearbyObservations(location.lat, location.lng)
       // Deduplicate by species
       const seen = new Map<string, NearbyBird>()
       for (const bird of data) {
@@ -53,38 +51,16 @@ export function NearbyPage() {
   }
 
   useEffect(() => {
-    if (location && ebirdApiKey && !nearby.length) {
+    if (location && !nearby.length) {
       fetchNearby()
     }
-  }, [location, ebirdApiKey]) // eslint-disable-line
+  }, [location]) // eslint-disable-line
 
   // Unique species user has collected
   const uniqueCollected = new Set(observations.map((o) => o.bird.scientificName.toLowerCase()))
   const foundCount = nearby.filter((b) =>
     uniqueCollected.has(b.sciName.toLowerCase())
   ).length
-
-  if (!ebirdApiKey) {
-    return (
-      <div className="p-4 max-w-lg mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-1">Птицы рядом</h1>
-        <p className="text-gray-400 text-sm mb-6">Последние наблюдения в вашем районе</p>
-
-        <div className="bg-yellow-950/30 border border-yellow-800 rounded-2xl p-6 flex flex-col items-center text-center gap-3">
-          <AlertCircle className="text-yellow-500" size={32} />
-          <p className="text-yellow-300 font-semibold">Нужен API ключ eBird</p>
-          <p className="text-gray-400 text-sm">
-            Для получения данных о птицах рядом нужен бесплатный ключ от Cornell Lab.
-          </p>
-          <ol className="text-sm text-gray-400 text-left space-y-1">
-            <li>1. Зайди на <strong className="text-white">ebird.org/api/keygen</strong></li>
-            <li>2. Войди или зарегистрируйся</li>
-            <li>3. Получи ключ и вставь в <strong className="text-white">Настройки</strong></li>
-          </ol>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="p-4 max-w-lg mx-auto animate-fade-in">
