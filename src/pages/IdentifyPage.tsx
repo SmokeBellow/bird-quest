@@ -154,7 +154,7 @@ export function IdentifyPage() {
         const res = await identifyFromImage(imageFile, location?.lat, location?.lng)
         if (res.length === 0) {
           setError('Птица не распознана. Попробуйте другое фото с чёткой птицей.')
-        } else if (res[0].confidence >= 0.8) {
+        } else if (res[0].confidence >= 0.65) {
           // Высокая уверенность — добавляем автоматически
           addBird(res[0].bird, 'photo')
         } else {
@@ -394,7 +394,7 @@ export function IdentifyPage() {
                 )
               })}
               <p className="text-xs text-gray-600 text-center">
-                Уверенность &lt; 80% — требует подтверждения
+                Уверенность &lt; 65% — выбери нужный вариант
               </p>
             </div>
           )}

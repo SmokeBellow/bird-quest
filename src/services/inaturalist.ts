@@ -117,17 +117,21 @@ export async function identifyFromImage(
   lng?: number
 ): Promise<IdentifyResult[]> {
   const results = await fetchVisionResults(file, lat, lng)
-  return results
+  const filtered = results
     .filter((r) => {
       const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
       return iconic === 'aves' || r.taxon.ancestor_ids?.includes(3)
     })
     .slice(0, 5)
-    .map((r) => ({
-      bird: taxonToBird(r.taxon),
-      confidence: r.score,
-      source: 'inaturalist' as const,
-    }))
+
+  // Normalize scores relative to their sum so the top result gets an
+  // intuitive confidence percentage (iNat raw scores rarely exceed 0.5).
+  const total = filtered.reduce((sum, r) => sum + r.score, 0)
+  return filtered.map((r) => ({
+    bird: taxonToBird(r.taxon),
+    confidence: total > 0 ? r.score / total : r.score,
+    source: 'inaturalist' as const,
+  }))
 }
 
 export async function identifyPlantFromImage(
@@ -136,7 +140,7 @@ export async function identifyPlantFromImage(
   lng?: number
 ): Promise<PlantResult[]> {
   const results = await fetchVisionResults(file, lat, lng)
-  return results
+  const filtered = results
     .filter((r) => {
       const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
       return (
@@ -147,16 +151,18 @@ export async function identifyPlantFromImage(
       )
     })
     .slice(0, 5)
-    .map((r) => ({
-      id: `inat_${r.taxon.id}`,
-      commonName: r.taxon.preferred_common_name || r.taxon.name,
-      scientificName: r.taxon.name,
-      thumbnailUrl: r.taxon.default_photo?.square_url || r.taxon.default_photo?.url,
-      imageUrl: r.taxon.default_photo?.medium_url,
-      wikipediaUrl: r.taxon.wikipedia_url,
-      confidence: r.score,
-      iconic: r.taxon.iconic_taxon_name,
-    }))
+
+  const total = filtered.reduce((sum, r) => sum + r.score, 0)
+  return filtered.map((r) => ({
+    id: `inat_${r.taxon.id}`,
+    commonName: r.taxon.preferred_common_name || r.taxon.name,
+    scientificName: r.taxon.name,
+    thumbnailUrl: r.taxon.default_photo?.square_url || r.taxon.default_photo?.url,
+    imageUrl: r.taxon.default_photo?.medium_url,
+    wikipediaUrl: r.taxon.wikipedia_url,
+    confidence: total > 0 ? r.score / total : r.score,
+    iconic: r.taxon.iconic_taxon_name,
+  }))
 }
 
 export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bird>> {
