@@ -21,7 +21,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Header */}
       <header className="bg-forest-900 border-b border-forest-800 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🦅</span>
+          <img src="/bird-quest/logo.png" alt="BirdQuest" className="h-8 w-8 rounded-full object-cover" />
           <span className="font-bold text-lg text-forest-300">BirdQuest</span>
         </div>
         <div className="flex items-center gap-3 text-sm text-forest-400">
