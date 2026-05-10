@@ -1,6 +1,17 @@
 import type { Bird, IdentifyResult } from '../types'
 import { getBirdNetUrl } from './birdnet'
 
+export interface PlantResult {
+  id: string
+  commonName: string
+  scientificName: string
+  thumbnailUrl?: string
+  imageUrl?: string
+  wikipediaUrl?: string
+  confidence: number
+  family?: string
+}
+
 const INAT_BASE = 'https://api.inaturalist.org/v1'
 
 interface INatTaxon {
@@ -68,13 +79,12 @@ async function prepareImage(file: File): Promise<Blob> {
   return new Promise((res) => canvas.toBlob((b) => res(b!), 'image/jpeg', quality))
 }
 
-export async function identifyFromImage(
+async function fetchVisionResults(
   file: File,
   lat?: number,
   lng?: number
-): Promise<IdentifyResult[]> {
+): Promise<INatScoreResult[]> {
   const image = await prepareImage(file)
-
   const formData = new FormData()
   formData.append('image', image, 'photo.jpg')
   if (lat !== undefined) formData.append('lat', lat.toString())
@@ -87,21 +97,25 @@ export async function identifyFromImage(
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    if (res.status === 503) {
+    if (res.status === 503)
       throw new Error('Сервис определения по фото недоступен — токен iNaturalist не настроен на сервере.')
-    }
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401 || res.status === 403)
       throw new Error('Ошибка авторизации iNaturalist. Обратитесь к администратору.')
-    }
-    if (res.status === 429) {
+    if (res.status === 429)
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
-    }
     throw new Error(`Ошибка сервера ${res.status}: ${text.slice(0, 100)}`)
   }
 
   const data = await res.json()
-  const results: INatScoreResult[] = data.results || []
+  return data.results || []
+}
 
+export async function identifyFromImage(
+  file: File,
+  lat?: number,
+  lng?: number
+): Promise<IdentifyResult[]> {
+  const results = await fetchVisionResults(file, lat, lng)
   return results
     .filter((r) => {
       const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
@@ -112,6 +126,34 @@ export async function identifyFromImage(
       bird: taxonToBird(r.taxon),
       confidence: r.score,
       source: 'inaturalist' as const,
+    }))
+}
+
+export async function identifyPlantFromImage(
+  file: File,
+  lat?: number,
+  lng?: number
+): Promise<PlantResult[]> {
+  const results = await fetchVisionResults(file, lat, lng)
+  return results
+    .filter((r) => {
+      const iconic = (r.taxon.iconic_taxon_name || '').toLowerCase()
+      return (
+        iconic === 'plantae' ||
+        iconic === 'fungi' ||
+        r.taxon.ancestor_ids?.includes(47126) || // Plantae
+        r.taxon.ancestor_ids?.includes(47170)    // Fungi
+      )
+    })
+    .slice(0, 5)
+    .map((r) => ({
+      id: `inat_${r.taxon.id}`,
+      commonName: r.taxon.preferred_common_name || r.taxon.name,
+      scientificName: r.taxon.name,
+      thumbnailUrl: r.taxon.default_photo?.square_url || r.taxon.default_photo?.url,
+      imageUrl: r.taxon.default_photo?.medium_url,
+      wikipediaUrl: r.taxon.wikipedia_url,
+      confidence: r.score,
     }))
 }
 

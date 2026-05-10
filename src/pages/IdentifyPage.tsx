@@ -4,7 +4,8 @@ import { Camera, Mic, MicOff, Upload, Search, X, CheckCircle, AlertCircle, Info 
 import { useBirdStore } from '../store'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
-import { identifyFromImage, searchBirdByName } from '../services/inaturalist'
+import { identifyFromImage, identifyPlantFromImage, searchBirdByName } from '../services/inaturalist'
+import type { PlantResult } from '../services/inaturalist'
 import {
   identifyFromAudio,
   checkBirdNetStatus,
@@ -67,10 +68,12 @@ export function IdentifyPage() {
   const addObservation = useBirdStore((s) => s.addObservation)
 
   const [mode, setMode] = useState<'photo' | 'sound' | 'search'>('photo')
+  const [photoCategory, setPhotoCategory] = useState<'bird' | 'plant'>('bird')
   const [preview, setPreview] = useState<string | null>(null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [photoResults, setPhotoResults] = useState<IdentifyResult[] | null>(null)
+  const [plantResults, setPlantResults] = useState<PlantResult[] | null>(null)
   const [soundResults, setSoundResults] = useState<{ commonName: string; scientificName: string; confidence: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -116,6 +119,7 @@ export function IdentifyPage() {
     setImageFile(file)
     setPreview(URL.createObjectURL(file))
     setPhotoResults(null)
+    setPlantResults(null)
     setError(null)
   }, [])
 
@@ -132,15 +136,26 @@ export function IdentifyPage() {
     if (!imageFile) return
     setLoading(true)
     setError(null)
+    setPhotoResults(null)
+    setPlantResults(null)
     try {
-      const res = await identifyFromImage(imageFile, location?.lat, location?.lng)
-      if (res.length === 0) {
-        setError('Птица не распознана. Попробуйте другое фото с чёткой птицей.')
-      } else if (res[0].confidence >= 0.8) {
-        // Высокая уверенность — добавляем автоматически
-        addBird(res[0].bird, 'photo')
+      if (photoCategory === 'plant') {
+        const res = await identifyPlantFromImage(imageFile, location?.lat, location?.lng)
+        if (res.length === 0) {
+          setError('Растение не распознано. Попробуйте другое фото с чётким растением.')
+        } else {
+          setPlantResults(res)
+        }
       } else {
-        setPhotoResults(res)
+        const res = await identifyFromImage(imageFile, location?.lat, location?.lng)
+        if (res.length === 0) {
+          setError('Птица не распознана. Попробуйте другое фото с чёткой птицей.')
+        } else if (res[0].confidence >= 0.8) {
+          // Высокая уверенность — добавляем автоматически
+          addBird(res[0].bird, 'photo')
+        } else {
+          setPhotoResults(res)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка при определении. Проверьте интернет-соединение.')
@@ -213,6 +228,7 @@ export function IdentifyPage() {
     setPreview(null)
     setImageFile(null)
     setPhotoResults(null)
+    setPlantResults(null)
     setError(null)
   }
 
@@ -253,6 +269,22 @@ export function IdentifyPage() {
       {/* ── PHOTO MODE ── */}
       {mode === 'photo' && (
         <div className="space-y-4">
+          {/* Category toggle */}
+          <div className="flex gap-2 bg-gray-900 p-1 rounded-xl">
+            <button
+              onClick={() => { setPhotoCategory('bird'); setPhotoResults(null); setPlantResults(null); setError(null) }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${photoCategory === 'bird' ? 'bg-forest-700 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              🐦 Птицы
+            </button>
+            <button
+              onClick={() => { setPhotoCategory('plant'); setPhotoResults(null); setPlantResults(null); setError(null) }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${photoCategory === 'plant' ? 'bg-emerald-700 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              🌿 Растения
+            </button>
+          </div>
+
           {!preview ? (
             <div
               onDrop={handleDrop}
@@ -284,13 +316,22 @@ export function IdentifyPage() {
             </div>
           )}
 
-          {preview && !photoResults && (
+          {preview && !photoResults && !plantResults && (
             <button
               onClick={identifyImage}
               disabled={loading}
-              className="w-full py-3 bg-forest-700 hover:bg-forest-600 disabled:opacity-50 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+              className={`w-full py-3 disabled:opacity-50 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors ${
+                photoCategory === 'plant'
+                  ? 'bg-emerald-700 hover:bg-emerald-600'
+                  : 'bg-forest-700 hover:bg-forest-600'
+              }`}
             >
-              {loading ? <><LoadingSpinner size={20} /> Определяю...</> : <><Search size={20} /> Определить птицу</>}
+              {loading
+                ? <><LoadingSpinner size={20} /> Определяю...</>
+                : photoCategory === 'plant'
+                  ? <><Search size={20} /> Определить растение</>
+                  : <><Search size={20} /> Определить птицу</>
+              }
             </button>
           )}
 
@@ -328,6 +369,55 @@ export function IdentifyPage() {
               <p className="text-xs text-gray-600 text-center">
                 Уверенность &lt; 80% — требует подтверждения
               </p>
+            </div>
+          )}
+
+          {plantResults && (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-gray-300">
+                Результаты определения растения:
+              </p>
+              {plantResults.map((r, i) => {
+                const pct = Math.round(r.confidence * 100)
+                const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800"
+                  >
+                    {r.thumbnailUrl ? (
+                      <img src={r.thumbnailUrl} alt={r.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🌿</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-white truncate">{r.commonName}</p>
+                      <p className="text-xs text-gray-500 italic truncate mb-1">{r.scientificName}</p>
+                      <ConfidenceBar value={r.confidence} />
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
+                      {r.wikipediaUrl && (
+                        <a
+                          href={r.wikipediaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-blue-400 hover:underline"
+                        >
+                          Wiki
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+              <button
+                onClick={() => { setPlantResults(null); clearImage() }}
+                className="text-sm text-gray-500 underline mx-auto block"
+              >
+                Попробовать другое фото
+              </button>
             </div>
           )}
         </div>
