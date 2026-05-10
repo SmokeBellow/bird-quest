@@ -6,6 +6,7 @@ import { useGeolocation } from '../hooks/useGeolocation'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { identifyFromImage, identifyPlantFromImage, searchBirdByName } from '../services/inaturalist'
 import type { PlantResult } from '../services/inaturalist'
+import type { PlantObservation } from '../types'
 import {
   identifyFromAudio,
   checkBirdNetStatus,
@@ -66,6 +67,8 @@ export function IdentifyPage() {
   const navigate = useNavigate()
   const location = useGeolocation()
   const addObservation = useBirdStore((s) => s.addObservation)
+  const addPlantObservation = useBirdStore((s) => s.addPlantObservation)
+  const hasObservedPlant = useBirdStore((s) => s.hasObservedPlant)
 
   const [mode, setMode] = useState<'photo' | 'sound' | 'search'>('photo')
   const [photoCategory, setPhotoCategory] = useState<'bird' | 'plant'>('bird')
@@ -74,6 +77,7 @@ export function IdentifyPage() {
   const [loading, setLoading] = useState(false)
   const [photoResults, setPhotoResults] = useState<IdentifyResult[] | null>(null)
   const [plantResults, setPlantResults] = useState<PlantResult[] | null>(null)
+  const [addedPlantIds, setAddedPlantIds] = useState<Set<string>>(new Set())
   const [soundResults, setSoundResults] = useState<{ commonName: string; scientificName: string; confidence: number }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -224,11 +228,34 @@ export function IdentifyPage() {
     scientificName: det.scientificName,
   })
 
+  const addPlantToCollection = (r: PlantResult) => {
+    const obs: PlantObservation = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      plant: {
+        id: r.id,
+        commonName: r.commonName,
+        scientificName: r.scientificName,
+        thumbnailUrl: r.thumbnailUrl,
+        imageUrl: r.imageUrl,
+        wikipediaUrl: r.wikipediaUrl,
+        family: r.family,
+        iconic: r.iconic,
+      },
+      observedAt: new Date().toISOString(),
+      location: location ?? undefined,
+      imageUrl: preview ?? undefined,
+      confidence: r.confidence,
+    }
+    addPlantObservation(obs)
+    setAddedPlantIds((prev) => new Set(prev).add(r.id))
+  }
+
   const clearImage = () => {
     setPreview(null)
     setImageFile(null)
     setPhotoResults(null)
     setPlantResults(null)
+    setAddedPlantIds(new Set())
     setError(null)
   }
 
@@ -380,6 +407,7 @@ export function IdentifyPage() {
               {plantResults.map((r, i) => {
                 const pct = Math.round(r.confidence * 100)
                 const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                const isAdded = addedPlantIds.has(r.id) || hasObservedPlant(r.id)
                 return (
                   <div
                     key={i}
@@ -392,17 +420,28 @@ export function IdentifyPage() {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-white truncate">{r.commonName}</p>
-                      <p className="text-xs text-gray-500 italic truncate mb-1">{r.scientificName}</p>
+                      <p className="text-xs text-gray-500 italic truncate">{r.scientificName}</p>
+                      {r.family && <p className="text-xs text-emerald-600 truncate">{r.family}</p>}
                       <ConfidenceBar value={r.confidence} />
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
                       <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
+                      <button
+                        onClick={() => !isAdded && addPlantToCollection(r)}
+                        disabled={isAdded}
+                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
+                          isAdded
+                            ? 'bg-emerald-900 text-emerald-400 cursor-default'
+                            : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                        }`}
+                      >
+                        {isAdded ? '✓ Добавлено' : '+ В коллекцию'}
+                      </button>
                       {r.wikipediaUrl && (
                         <a
                           href={r.wikipediaUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
                           className="text-xs text-blue-400 hover:underline"
                         >
                           Wiki
@@ -413,7 +452,7 @@ export function IdentifyPage() {
                 )
               })}
               <button
-                onClick={() => { setPlantResults(null); clearImage() }}
+                onClick={clearImage}
                 className="text-sm text-gray-500 underline mx-auto block"
               >
                 Попробовать другое фото

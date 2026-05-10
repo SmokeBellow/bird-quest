@@ -2,10 +2,12 @@ import { useState, useMemo } from 'react'
 import { useBirdStore } from '../store'
 import { AchievementCard } from '../components/AchievementCard'
 import { ACHIEVEMENTS } from '../achievements/definitions'
+import { PLANT_ACHIEVEMENTS } from '../achievements/plantDefinitions'
 import { Trophy } from 'lucide-react'
 
 type Filter = 'all' | 'unlocked' | 'locked'
 type Category = 'all' | string
+type Tab = 'bird' | 'plant'
 
 const categoryLabel: Record<string, string> = {
   all: 'Все',
@@ -21,20 +23,24 @@ const rarityOrder = { platinum: 0, gold: 1, silver: 2, bronze: 3 }
 
 export function AchievementsPage() {
   const unlockedAchievements = useBirdStore((s) => s.unlockedAchievements)
-  const getStats = useBirdStore((s) => s.getStats)
-  const stats = getStats()
+  const unlockedPlantAchievements = useBirdStore((s) => s.unlockedPlantAchievements)
+
+  const [tab, setTab] = useState<Tab>('bird')
 
   const [filter, setFilter] = useState<Filter>('all')
   const [category, setCategory] = useState<Category>('all')
 
-  const unlockedIds = new Set(unlockedAchievements.map((a) => a.id))
-  const totalPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0)
-  const maxPoints = ACHIEVEMENTS.reduce((sum, a) => sum + a.points, 0)
-  const progress = ACHIEVEMENTS.filter((a) => unlockedIds.has(a.id)).length
-  const total = ACHIEVEMENTS.length
+  const activeUnlocked = tab === 'bird' ? unlockedAchievements : unlockedPlantAchievements
+  const activeAchievements = tab === 'bird' ? ACHIEVEMENTS : PLANT_ACHIEVEMENTS
+
+  const unlockedIds = new Set(activeUnlocked.map((a) => a.id))
+  const totalPoints = activeUnlocked.reduce((sum, a) => sum + a.points, 0)
+  const maxPoints = activeAchievements.reduce((sum, a) => sum + a.points, 0)
+  const progress = activeAchievements.filter((a) => unlockedIds.has(a.id)).length
+  const total = activeAchievements.length
 
   const filtered = useMemo(() => {
-    return ACHIEVEMENTS.filter((a) => {
+    return activeAchievements.filter((a) => {
       if (filter === 'unlocked' && !unlockedIds.has(a.id)) return false
       if (filter === 'locked' && unlockedIds.has(a.id)) return false
       if (category !== 'all' && a.category !== category) return false
@@ -45,14 +51,30 @@ export function AchievementsPage() {
       if (aUnlocked !== bUnlocked) return aUnlocked ? -1 : 1
       return rarityOrder[a.rarity] - rarityOrder[b.rarity]
     })
-  }, [filter, category, unlockedIds])
+  }, [filter, category, unlockedIds, activeAchievements])
 
-  const categories = ['all', ...new Set(ACHIEVEMENTS.map((a) => a.category))]
+  const categories = ['all', ...new Set(activeAchievements.map((a) => a.category))]
 
   return (
     <div className="p-4 max-w-lg mx-auto animate-fade-in">
       <h1 className="text-2xl font-bold text-white mb-1">Достижения</h1>
-      <p className="text-gray-400 text-sm mb-4">Открой их все — исследуй мир птиц</p>
+      <p className="text-gray-400 text-sm mb-4">Открой их все — исследуй мир природы</p>
+
+      {/* Tab toggle */}
+      <div className="flex gap-2 bg-gray-900 p-1 rounded-xl mb-5">
+        <button
+          onClick={() => { setTab('bird'); setFilter('all'); setCategory('all') }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'bird' ? 'bg-forest-700 text-white' : 'text-gray-400 hover:text-white'}`}
+        >
+          🐦 Птицы
+        </button>
+        <button
+          onClick={() => { setTab('plant'); setFilter('all'); setCategory('all') }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${tab === 'plant' ? 'bg-emerald-700 text-white' : 'text-gray-400 hover:text-white'}`}
+        >
+          🌿 Растения
+        </button>
+      </div>
 
       {/* Progress */}
       <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 mb-5">
@@ -135,7 +157,7 @@ export function AchievementsPage() {
           {filtered.map((ach) => {
             const unlocked = unlockedIds.has(ach.id)
             const displayAch = unlocked
-              ? unlockedAchievements.find((a) => a.id === ach.id)!
+              ? activeUnlocked.find((a) => a.id === ach.id)!
               : ach
             return (
               <AchievementCard key={ach.id} achievement={displayAch} unlocked={unlocked} />

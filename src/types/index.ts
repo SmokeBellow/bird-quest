@@ -74,6 +74,38 @@ export interface UserStats {
   rareBirds: number
 }
 
+export interface Plant {
+  id: string
+  commonName: string
+  scientificName: string
+  thumbnailUrl?: string
+  imageUrl?: string
+  wikipediaUrl?: string
+  family?: string
+  iconic?: string  // 'Plantae' | 'Fungi'
+}
+
+export interface PlantObservation {
+  id: string
+  plant: Plant
+  observedAt: string
+  location?: GeoLocation
+  imageUrl?: string
+  confidence?: number
+}
+
+export interface PlantStats {
+  totalPlants: number
+  uniqueSpecies: number
+  earlyMorning: number
+  lateNight: number
+  streak: number
+  locations: string[]
+  families: string[]
+  fungi: number
+  observations: PlantObservation[]
+}
+
 export interface NearbyBird {
   speciesCode: string
   comName: string

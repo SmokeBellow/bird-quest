@@ -10,6 +10,7 @@ export interface PlantResult {
   wikipediaUrl?: string
   confidence: number
   family?: string
+  iconic?: string  // iconic_taxon_name: 'Plantae' | 'Fungi'
 }
 
 const INAT_BASE = 'https://api.inaturalist.org/v1'
@@ -154,6 +155,7 @@ export async function identifyPlantFromImage(
       imageUrl: r.taxon.default_photo?.medium_url,
       wikipediaUrl: r.taxon.wikipedia_url,
       confidence: r.score,
+      iconic: r.taxon.iconic_taxon_name,
     }))
 }
 

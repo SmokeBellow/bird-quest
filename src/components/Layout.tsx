@@ -13,8 +13,14 @@ const tabs = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const newAchievements = useBirdStore((s) => s.newAchievements)
-  const dismiss = useBirdStore((s) => s.dismissNewAchievements)
-  const unlockedCount = useBirdStore((s) => s.unlockedAchievements.length)
+  const newPlantAchievements = useBirdStore((s) => s.newPlantAchievements)
+  const dismissBird = useBirdStore((s) => s.dismissNewAchievements)
+  const dismissPlant = useBirdStore((s) => s.dismissNewPlantAchievements)
+  const unlockedBirdCount = useBirdStore((s) => s.unlockedAchievements.length)
+  const unlockedPlantCount = useBirdStore((s) => s.unlockedPlantAchievements.length)
+  const unlockedCount = unlockedBirdCount + unlockedPlantCount
+  const dismiss = () => { dismissBird(); dismissPlant() }
+  const allNew = [...newAchievements, ...newPlantAchievements]
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-950 text-white">
@@ -34,7 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-auto pb-20">{children}</main>
 
       {/* Achievement toasts */}
-      {newAchievements.map((ach) => (
+      {allNew.map((ach) => (
         <AchievementToast key={ach.id} achievement={ach} onDismiss={dismiss} />
       ))}
 
