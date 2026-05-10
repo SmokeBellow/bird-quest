@@ -7,12 +7,16 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { NearbyBird } from '../types'
 
 function formatTimeSince(dateStr: string) {
-  const d = new Date(dateStr.replace(' ', 'T'))
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
   const diffH = Math.round((Date.now() - d.getTime()) / 3600000)
-  if (diffH < 1) return 'менее часа назад'
+  if (diffH < 1) return 'сегодня'
   if (diffH < 24) return `${diffH} ч. назад`
   const days = Math.floor(diffH / 24)
-  return `${days} дн. назад`
+  if (days < 30) return `${days} дн. назад`
+  const months = Math.floor(days / 30)
+  return `${months} мес. назад`
 }
 
 export function NearbyPage() {
@@ -125,27 +129,31 @@ export function NearbyPage() {
                     : 'bg-gray-900 border-gray-800'
                 }`}
               >
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-lg ${
-                    found ? 'bg-forest-800' : 'bg-gray-800'
-                  }`}
-                >
-                  {found ? '✓' : '🐦'}
-                </div>
+                {bird.thumbnailUrl ? (
+                  <img
+                    src={bird.thumbnailUrl}
+                    alt={bird.comName}
+                    className={`w-10 h-10 rounded-full object-cover flex-shrink-0 ${found ? 'ring-2 ring-forest-500' : ''}`}
+                  />
+                ) : (
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-lg ${found ? 'bg-forest-800' : 'bg-gray-800'}`}>
+                    {found ? '✓' : '🐦'}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className={`font-medium truncate ${found ? 'text-forest-300' : 'text-white'}`}>
-                    {bird.comName}
+                    {bird.comName || bird.sciName}
                   </p>
                   <p className="text-xs text-gray-500 italic truncate">{bird.sciName}</p>
                 </div>
                 <div className="text-xs text-gray-500 text-right flex-shrink-0">
-                  <div className="flex items-center gap-1">
-                    <MapPin size={10} />
-                    <span>{formatTimeSince(bird.obsDt)}</span>
-                  </div>
-                  {bird.howMany && (
-                    <div className="text-gray-600">{bird.howMany} особей</div>
+                  {bird.obsDt && (
+                    <div className="flex items-center gap-1">
+                      <MapPin size={10} />
+                      <span>{formatTimeSince(bird.obsDt)}</span>
+                    </div>
                   )}
+                  {found && <div className="text-forest-400 font-medium">найдена ✓</div>}
                 </div>
               </div>
             )

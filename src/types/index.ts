@@ -78,11 +78,8 @@ export interface NearbyBird {
   speciesCode: string
   comName: string
   sciName: string
-  howMany?: number
   obsDt: string
-  subId: string
-  lat: number
-  lng: number
+  thumbnailUrl?: string
 }
 
 export interface IdentifyResult {

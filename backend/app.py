@@ -267,59 +267,53 @@ async def nearby(
     lat: float = Query(...),
     lng: float = Query(...),
     dist: float = Query(25),
-    back: int = Query(14),
 ):
-    if not EBIRD_API_KEY:
-        return JSONResponse(
-            {"error": "eBird API key not configured on server"},
-            status_code=503,
-            headers={"Access-Control-Allow-Origin": "*"},
-        )
+    """Return recent bird observations near a location via iNaturalist."""
+    headers = {}
+    if INAT_TOKEN:
+        headers["Authorization"] = f"Bearer {INAT_TOKEN}"
+
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.get(
-            "https://api.ebird.org/v2/data/obs/geo/recent",
-            params={"lat": lat, "lng": lng, "dist": dist, "back": back, "maxResults": 100},
-            headers={"X-eBirdApiToken": EBIRD_API_KEY},
+            "https://api.inaturalist.org/v1/observations",
+            params={
+                "taxon_id": 3,          # Aves
+                "lat": lat,
+                "lng": lng,
+                "radius": dist,
+                "per_page": 100,
+                "order_by": "observed_on",
+                "order": "desc",
+                "quality_grade": "research,needs_id",
+            },
+            headers=headers,
         )
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        media_type="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
-    )
 
-
-@app.get("/ebird/taxonomy")
-async def ebird_taxonomy(species: str = Query(...)):
-    if not EBIRD_API_KEY:
-        return JSONResponse([], headers={"Access-Control-Allow-Origin": "*"})
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            "https://api.ebird.org/v2/ref/taxonomy/ebird",
-            params={"species": species, "fmt": "json"},
-            headers={"X-eBirdApiToken": EBIRD_API_KEY},
+    if not resp.is_success:
+        return JSONResponse(
+            [],
+            status_code=resp.status_code,
+            headers={"Access-Control-Allow-Origin": "*"},
         )
-    return Response(
-        content=resp.content if resp.is_success else b"[]",
-        status_code=200,
-        media_type="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
-    )
 
+    # Deduplicate by taxon and normalise to a simple list
+    seen: set[int] = set()
+    results = []
+    for obs in resp.json().get("results", []):
+        taxon = obs.get("taxon")
+        if not taxon:
+            continue
+        tid = taxon.get("id")
+        if tid in seen:
+            continue
+        seen.add(tid)
+        photo = taxon.get("default_photo") or {}
+        results.append({
+            "speciesCode": str(tid),
+            "comName": taxon.get("preferred_common_name") or taxon.get("name", ""),
+            "sciName": taxon.get("name", ""),
+            "obsDt": obs.get("observed_on", ""),
+            "thumbnailUrl": photo.get("square_url"),
+        })
 
-@app.get("/ebird/spplist/{lat}/{lng}")
-async def ebird_spplist(lat: float, lng: float, dist: float = Query(50)):
-    if not EBIRD_API_KEY:
-        return JSONResponse([], headers={"Access-Control-Allow-Origin": "*"})
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"https://api.ebird.org/v2/product/spplist/{lat:.2f}/{lng:.2f}",
-            params={"dist": dist},
-            headers={"X-eBirdApiToken": EBIRD_API_KEY},
-        )
-    return Response(
-        content=resp.content if resp.is_success else b"[]",
-        status_code=200,
-        media_type="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
-    )
+    return JSONResponse(results, headers={"Access-Control-Allow-Origin": "*"})
