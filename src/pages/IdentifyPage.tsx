@@ -136,6 +136,9 @@ export function IdentifyPage() {
       const res = await identifyFromImage(imageFile, location?.lat, location?.lng)
       if (res.length === 0) {
         setError('Птица не распознана. Попробуйте другое фото с чёткой птицей.')
+      } else if (res[0].confidence >= 0.8) {
+        // Высокая уверенность — добавляем автоматически
+        addBird(res[0].bird, 'photo')
       } else {
         setPhotoResults(res)
       }
@@ -293,24 +296,38 @@ export function IdentifyPage() {
 
           {photoResults && (
             <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">Результаты — выбери правильный вариант:</p>
-              {photoResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => addBird(r.bird, 'photo')}
-                  className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
-                >
-                  {r.bird.thumbnailUrl && (
-                    <img src={r.bird.thumbnailUrl} alt={r.bird.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white truncate">{r.bird.commonName}</p>
-                    <p className="text-xs text-gray-500 italic truncate">{r.bird.scientificName}</p>
-                    <ConfidenceBar value={r.confidence} />
-                  </div>
-                  <CheckCircle size={20} className="text-forest-400 flex-shrink-0" />
-                </button>
-              ))}
+              <p className="text-sm font-semibold text-gray-300">
+                Похожие варианты — выбери правильный:
+              </p>
+              {photoResults.map((r, i) => {
+                const pct = Math.round(r.confidence * 100)
+                const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                return (
+                  <button
+                    key={i}
+                    onClick={() => addBird(r.bird, 'photo')}
+                    className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
+                  >
+                    {r.bird.thumbnailUrl ? (
+                      <img src={r.bird.thumbnailUrl} alt={r.bird.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🐦</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-white truncate">{r.bird.commonName}</p>
+                      <p className="text-xs text-gray-500 italic truncate mb-1">{r.bird.scientificName}</p>
+                      <ConfidenceBar value={r.confidence} />
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
+                      <CheckCircle size={16} className="text-forest-500" />
+                    </div>
+                  </button>
+                )
+              })}
+              <p className="text-xs text-gray-600 text-center">
+                Уверенность &lt; 80% — требует подтверждения
+              </p>
             </div>
           )}
         </div>
