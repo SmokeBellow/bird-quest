@@ -4,6 +4,17 @@ import type { ObservedBird, Achievement, UserStats, GeoLocation, Bird, PlantObse
 import { ACHIEVEMENTS } from '../achievements/definitions'
 import { PLANT_ACHIEVEMENTS } from '../achievements/plantDefinitions'
 import { FUNGUS_ACHIEVEMENTS } from '../achievements/fungusDefinitions'
+import {
+  upsertBirdObservation, deleteBirdObservation, fetchBirdObservations,
+  upsertPlantObservation, deletePlantObservation, fetchPlantObservations,
+  upsertFungusObservation, deleteFungusObservation, fetchFungusObservations,
+  uploadAllLocalData,
+} from '../services/sync'
+
+export interface SupabaseUser {
+  id: string
+  email?: string
+}
 
 interface BirdStore {
   observations: ObservedBird[]
@@ -17,6 +28,9 @@ interface BirdStore {
   newFungusAchievements: Achievement[]
   location: GeoLocation | null
   ebirdApiKey: string
+  // Auth — NOT persisted, Supabase manages the session
+  supabaseUser: SupabaseUser | null
+  isSyncing: boolean
 
   addObservation: (obs: ObservedBird) => void
   removeObservation: (id: string) => void
@@ -36,6 +50,10 @@ interface BirdStore {
   hasObservedPlant: (plantId: string) => boolean
   hasObservedFungus: (fungusId: string) => boolean
   updateBirdInfo: (birdId: string, info: Partial<Bird>) => void
+  // Auth & sync
+  setSupabaseUser: (user: SupabaseUser | null) => void
+  uploadLocalToSupabase: () => Promise<{ birds: number; plants: number; fungi: number }>
+  loadFromSupabase: () => Promise<void>
 }
 
 function computeStats(observations: ObservedBird[]): UserStats {
@@ -218,12 +236,18 @@ export const useBirdStore = create<BirdStore>()(
       newFungusAchievements: [],
       location: null,
       ebirdApiKey: '',
+      supabaseUser: null,
+      isSyncing: false,
 
       addObservation: (obs) => {
         set((state) => {
           const observations = [...state.observations, obs]
           const stats = computeStats(observations)
           const newAchs = checkNewAchievements(stats, state.unlockedAchievements)
+          // fire-and-forget sync
+          if (state.supabaseUser) {
+            upsertBirdObservation(state.supabaseUser.id, obs).catch(console.error)
+          }
           return {
             observations,
             unlockedAchievements: [...state.unlockedAchievements, ...newAchs],
@@ -233,6 +257,10 @@ export const useBirdStore = create<BirdStore>()(
       },
 
       removeObservation: (id) => {
+        const { supabaseUser } = get()
+        if (supabaseUser) {
+          deleteBirdObservation(id).catch(console.error)
+        }
         set((state) => ({
           observations: state.observations.filter((o) => o.id !== id),
         }))
@@ -243,6 +271,9 @@ export const useBirdStore = create<BirdStore>()(
           const plantObservations = [...state.plantObservations, obs]
           const stats = computePlantStats(plantObservations)
           const newAchs = checkNewPlantAchievements(stats, state.unlockedPlantAchievements)
+          if (state.supabaseUser) {
+            upsertPlantObservation(state.supabaseUser.id, obs).catch(console.error)
+          }
           return {
             plantObservations,
             unlockedPlantAchievements: [...state.unlockedPlantAchievements, ...newAchs],
@@ -252,8 +283,38 @@ export const useBirdStore = create<BirdStore>()(
       },
 
       removePlantObservation: (id) => {
+        const { supabaseUser } = get()
+        if (supabaseUser) {
+          deletePlantObservation(id).catch(console.error)
+        }
         set((state) => ({
           plantObservations: state.plantObservations.filter((o) => o.id !== id),
+        }))
+      },
+
+      addFungusObservation: (obs) => {
+        set((state) => {
+          const fungusObservations = [...state.fungusObservations, obs]
+          const stats = computeFungusStats(fungusObservations)
+          const newAchs = checkNewFungusAchievements(stats, state.unlockedFungusAchievements)
+          if (state.supabaseUser) {
+            upsertFungusObservation(state.supabaseUser.id, obs).catch(console.error)
+          }
+          return {
+            fungusObservations,
+            unlockedFungusAchievements: [...state.unlockedFungusAchievements, ...newAchs],
+            newFungusAchievements: [...state.newFungusAchievements, ...newAchs],
+          }
+        })
+      },
+
+      removeFungusObservation: (id) => {
+        const { supabaseUser } = get()
+        if (supabaseUser) {
+          deleteFungusObservation(id).catch(console.error)
+        }
+        set((state) => ({
+          fungusObservations: state.fungusObservations.filter((o) => o.id !== id),
         }))
       },
 
@@ -266,25 +327,6 @@ export const useBirdStore = create<BirdStore>()(
       dismissNewPlantAchievements: () => set({ newPlantAchievements: [] }),
 
       dismissNewFungusAchievements: () => set({ newFungusAchievements: [] }),
-
-      addFungusObservation: (obs) => {
-        set((state) => {
-          const fungusObservations = [...state.fungusObservations, obs]
-          const stats = computeFungusStats(fungusObservations)
-          const newAchs = checkNewFungusAchievements(stats, state.unlockedFungusAchievements)
-          return {
-            fungusObservations,
-            unlockedFungusAchievements: [...state.unlockedFungusAchievements, ...newAchs],
-            newFungusAchievements: [...state.newFungusAchievements, ...newAchs],
-          }
-        })
-      },
-
-      removeFungusObservation: (id) => {
-        set((state) => ({
-          fungusObservations: state.fungusObservations.filter((o) => o.id !== id),
-        }))
-      },
 
       getStats: () => computeStats(get().observations),
 
@@ -305,9 +347,87 @@ export const useBirdStore = create<BirdStore>()(
           ),
         }))
       },
+
+      // ── Auth & sync ──────────────────────────────────────────────────────────
+
+      setSupabaseUser: (user) => set({ supabaseUser: user }),
+
+      uploadLocalToSupabase: async () => {
+        const { supabaseUser, observations, plantObservations, fungusObservations } = get()
+        if (!supabaseUser) return { birds: 0, plants: 0, fungi: 0 }
+        set({ isSyncing: true })
+        try {
+          await uploadAllLocalData(supabaseUser.id, observations, plantObservations, fungusObservations)
+          return {
+            birds: observations.length,
+            plants: plantObservations.length,
+            fungi: fungusObservations.length,
+          }
+        } finally {
+          set({ isSyncing: false })
+        }
+      },
+
+      loadFromSupabase: async () => {
+        const { supabaseUser } = get()
+        if (!supabaseUser) return
+        set({ isSyncing: true })
+        try {
+          const [birds, plants, fungi] = await Promise.all([
+            fetchBirdObservations(supabaseUser.id),
+            fetchPlantObservations(supabaseUser.id),
+            fetchFungusObservations(supabaseUser.id),
+          ])
+
+          // Recompute unlocked achievements from the loaded data
+          const birdStats = computeStats(birds)
+          const plantStats = computePlantStats(plants)
+          const fungusStats = computeFungusStats(fungi)
+
+          const unlockedAchievements = ACHIEVEMENTS
+            .filter((def) => def.condition(birdStats))
+            .map(({ condition: _c, ...ach }) => ({ ...ach, unlockedAt: new Date().toISOString() }))
+
+          const unlockedPlantAchievements = PLANT_ACHIEVEMENTS
+            .filter((def) => def.condition(plantStats))
+            .map(({ condition: _c, ...ach }) => ({ ...ach, unlockedAt: new Date().toISOString() }))
+
+          const unlockedFungusAchievements = FUNGUS_ACHIEVEMENTS
+            .filter((def) => def.condition(fungusStats))
+            .map(({ condition: _c, ...ach }) => ({ ...ach, unlockedAt: new Date().toISOString() }))
+
+          set({
+            observations: birds,
+            plantObservations: plants,
+            fungusObservations: fungi,
+            unlockedAchievements,
+            unlockedPlantAchievements,
+            unlockedFungusAchievements,
+            newAchievements: [],
+            newPlantAchievements: [],
+            newFungusAchievements: [],
+          })
+        } finally {
+          set({ isSyncing: false })
+        }
+      },
     }),
     {
       name: 'bird-quest-store',
+      partialize: (state) => ({
+        observations: state.observations,
+        unlockedAchievements: state.unlockedAchievements,
+        newAchievements: state.newAchievements,
+        plantObservations: state.plantObservations,
+        unlockedPlantAchievements: state.unlockedPlantAchievements,
+        newPlantAchievements: state.newPlantAchievements,
+        fungusObservations: state.fungusObservations,
+        unlockedFungusAchievements: state.unlockedFungusAchievements,
+        newFungusAchievements: state.newFungusAchievements,
+        location: state.location,
+        ebirdApiKey: state.ebirdApiKey,
+        // supabaseUser and isSyncing are intentionally NOT persisted
+      }),
     }
   )
 )

@@ -27,6 +27,11 @@ jobs:
 
       - run: npm ci
 
+      - name: Apply DB migrations
+        run: npx supabase db push --project-ref gzncftzyiafbvncwnsxc
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Build
         run: npm run build
         env:
@@ -34,6 +39,9 @@ jobs:
           VITE_BASE_URL: /${{ github.event.repository.name }}/
           # URL of your Render backend (set in repo Settings → Secrets)
           VITE_BIRDNET_URL: ${{ secrets.VITE_BIRDNET_URL }}
+          # Supabase (set in repo Settings → Secrets)
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       # GitHub Pages requires a 404.html that redirects to index for SPA routing
       - name: Create 404.html for SPA routing
