@@ -9,7 +9,6 @@ Every subsequent request: fast (model already in RAM).
 import csv
 import logging
 import os
-import struct
 import tempfile
 import threading
 import types
@@ -61,42 +60,12 @@ except Exception as e:
     _BIRDNET_AVAILABLE = False
 
 
-def _write_silent_wav(path: str, duration_s: int = 3, sample_rate: int = 48000):
-    """Write a silent WAV file to warm up the model."""
-    n_samples = duration_s * sample_rate
-    data_size = n_samples * 2
-    with open(path, "wb") as f:
-        f.write(b"RIFF")
-        f.write(struct.pack("<I", 36 + data_size))
-        f.write(b"WAVEfmt ")
-        f.write(struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
-                            sample_rate * 2, 2, 16))
-        f.write(b"data")
-        f.write(struct.pack("<I", data_size))
-        f.write(b"\x00" * data_size)
-
-
 def _warm_up():
-    """Load the BirdNET model by running a dummy analysis at startup."""
+    """Mark BirdNET as ready immediately — model loads lazily on first /analyze call."""
     if not _BIRDNET_AVAILABLE:
         return
-
-    log.info("Warming up BirdNET model (first analysis loads tensorflow + model)…")
-    with tempfile.TemporaryDirectory() as tmpdir:
-        dummy_wav = os.path.join(tmpdir, "silence.wav")
-        out_dir = os.path.join(tmpdir, "out")
-        os.makedirs(out_dir)
-        _write_silent_wav(dummy_wav)
-        try:
-            _ba_analyze(
-                audio_input=dummy_wav,
-                output=out_dir,
-                rtype="csv",
-                min_conf=0.1,
-            )
-            log.info("BirdNET model loaded and ready ✓")
-        except Exception as e:
-            log.warning("Warm-up analysis failed (model may still load on first request): %s", e)
+    log.info("BirdNET available — model will load on first analysis request ✓")
+    _birdnet_ready.set()
 
     _birdnet_ready.set()
 

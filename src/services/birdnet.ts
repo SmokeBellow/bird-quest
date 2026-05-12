@@ -63,6 +63,7 @@ export async function identifyFromAudio(
   const res = await fetch(`${base}/analyze`, {
     method: 'POST',
     body: formData,
+    signal: AbortSignal.timeout(300_000), // 5 min — first request loads TF model
   })
 
   if (!res.ok) {
