@@ -28,7 +28,9 @@ interface INatTaxon {
 
 interface INatScoreResult {
   taxon: INatTaxon
-  score: number
+  score?: number
+  combined_score?: number  // vision + location frequency (preferred when available)
+  vision_score?: number
 }
 
 function rarityFromConservation(status?: string): Bird['rarity'] {
@@ -123,12 +125,13 @@ export async function identifyFromImage(
     })
     .slice(0, 5)
 
-  // Normalize scores relative to their sum so the top result gets an
-  // intuitive confidence percentage (iNat raw scores rarely exceed 0.5).
-  const total = filtered.reduce((sum, r) => sum + r.score, 0)
+  // Prefer combined_score (vision + location) over vision-only score.
+  // Normalize relative to sum so the top result gets an intuitive %.
+  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
   return filtered.map((r) => ({
     bird: taxonToBird(r.taxon),
-    confidence: total > 0 ? r.score / total : r.score,
+    confidence: total > 0 ? getScore(r) / total : getScore(r),
     source: 'inaturalist' as const,
   }))
 }
@@ -157,8 +160,9 @@ export async function identifyPlantFromImage(
       return iconic === 'plantae' || r.taxon.ancestor_ids?.includes(47126)
     })
     .slice(0, 5)
-  const total = filtered.reduce((sum, r) => sum + r.score, 0)
-  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? r.score / total : r.score))
+  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
+  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? getScore(r) / total : getScore(r)))
 }
 
 export async function identifyFungusFromImage(
@@ -173,8 +177,9 @@ export async function identifyFungusFromImage(
       return iconic === 'fungi' || r.taxon.ancestor_ids?.includes(47170)
     })
     .slice(0, 5)
-  const total = filtered.reduce((sum, r) => sum + r.score, 0)
-  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? r.score / total : r.score))
+  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
+  return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? getScore(r) / total : getScore(r)))
 }
 
 export async function getBirdDetails(inaturalistId: number): Promise<Partial<Bird>> {

@@ -412,7 +412,7 @@ export function IdentifyPage() {
                 Похожие варианты — выбери правильный:
               </p>
               {photoResults.map((r, i) => {
-                const pct = Math.round(r.confidence * 100)
+                const pct = Math.round((r.confidence || 0) * 100)
                 const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
                 return (
                   <button
@@ -449,7 +449,7 @@ export function IdentifyPage() {
                 Результаты определения растения:
               </p>
               {plantResults.map((r, i) => {
-                const pct = Math.round(r.confidence * 100)
+                const pct = Math.round((r.confidence || 0) * 100)
                 const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
                 const isAdded = addedPlantIds.has(r.id) || hasObservedPlant(r.id)
                 return (
@@ -505,7 +505,7 @@ export function IdentifyPage() {
             <div className="space-y-3">
               <p className="text-sm font-semibold text-gray-300">Результаты определения гриба:</p>
               {fungusResults.map((r, i) => {
-                const pct = Math.round(r.confidence * 100)
+                const pct = Math.round((r.confidence || 0) * 100)
                 const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
                 const isAdded = addedFungusIds.has(r.id) || hasObservedFungus(r.id)
                 return (
