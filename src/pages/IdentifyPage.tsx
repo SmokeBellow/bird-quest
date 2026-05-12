@@ -95,12 +95,14 @@ export function IdentifyPage() {
   const checkStatus = useCallback(() => {
     checkBirdNetStatus().then((status) => {
       setBirdNetStatus(status)
-      // Keep polling while loading (model initializing)
-      if (status === 'loading') return
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
+      // Stop polling only when we have a definitive answer
+      if (status === 'available' || status === 'unavailable') {
+        if (pollRef.current) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+        }
       }
+      // 'loading' and 'waking' → keep polling
     })
   }, [])
 
@@ -110,9 +112,9 @@ export function IdentifyPage() {
 
     checkStatus()
 
-    // Poll every 10s while loading or waking
+    // Poll every 15s while loading or waking
     if (!pollRef.current) {
-      pollRef.current = setInterval(checkStatus, 10000)
+      pollRef.current = setInterval(checkStatus, 15000)
     }
 
     return () => {
