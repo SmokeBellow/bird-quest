@@ -1,54 +1,43 @@
 """
-BirdNET API — calls birdnet_analyzer CLI directly (no separate server process).
+BirdNET API — loads the BirdNET model ONCE at startup using the
+birdnet_analyzer Python API directly (no subprocess per request).
 
-Startup:
-  1. Run a throwaway CLI call to load the TFLite model into the OS page cache.
-  2. Mark _birdnet_ready once that completes.
-
-Each /analyze request:
-  - Saves uploaded audio to a temp file.
-  - Calls `python -m birdnet_analyzer.analyze` via subprocess.
-  - Parses the output CSV and returns detections.
+First /analyze after cold start: slow (model loads into memory).
+Every subsequent request: fast (model already in RAM).
 """
 
 import csv
 import logging
 import os
-import subprocess
+import struct
 import tempfile
 import threading
 import types
 
-# tflite-runtime 2.14 removed the `experimental` sub-namespace that
-# birdnet_analyzer uses (tflite.experimental.OpResolverType).
-# Restore it as a shim so birdnet_analyzer can import without error.
+# ── 1. Patch tflite_runtime BEFORE any birdnet_analyzer import ────────────────
 try:
-    import tflite_runtime.interpreter as _tflite_interp
-    if not hasattr(_tflite_interp, 'experimental'):
-        _exp = types.SimpleNamespace()
-        if hasattr(_tflite_interp, 'OpResolverType'):
-            _exp.OpResolverType = _tflite_interp.OpResolverType
-        else:
-            # Fallback: define the constant birdnet_analyzer actually uses
-            _exp.OpResolverType = types.SimpleNamespace(BUILTIN_WITHOUT_DEFAULT_DELEGATES=1)
-        _tflite_interp.experimental = _exp
+    import tflite_runtime.interpreter as _tflite
+    if not hasattr(_tflite, 'experimental'):
+        _tflite.experimental = types.SimpleNamespace(
+            OpResolverType=getattr(
+                _tflite, 'OpResolverType',
+                types.SimpleNamespace(BUILTIN_WITHOUT_DEFAULT_DELEGATES=1)
+            )
+        )
 except ImportError:
-    pass  # tflite_runtime not installed; birdnet_analyzer will fall back to tensorflow
+    pass  # tensorflow-cpu is used instead — no patch needed
 
 import httpx
-
 from fastapi import FastAPI, Form, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-
-# Service tokens — set as environment variables on Render
-INAT_TOKEN = os.environ.get("INAT_TOKEN", "")
-EBIRD_API_KEY = os.environ.get("EBIRD_API_KEY", "")
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 PORT = int(os.environ.get("PORT", 8080))
+INAT_TOKEN = os.environ.get("INAT_TOKEN", "")
+EBIRD_API_KEY = os.environ.get("EBIRD_API_KEY", "")
 
 app = FastAPI(title="BirdNET API")
 app.add_middleware(
@@ -60,43 +49,20 @@ app.add_middleware(
 )
 
 _birdnet_ready = threading.Event()
-
-# Detect which CLI entry-point works for this version of birdnet-analyzer
-_CLI_MODULE: str | None = None
+_analyze_lock = threading.Lock()  # birdnet_analyzer is not thread-safe
 
 
-PATCH_SCRIPT = os.path.join(os.path.dirname(__file__), "birdnet_patch.py")
+# ── 2. Import birdnet_analyzer at module level (triggers one-time setup) ──────
+try:
+    from birdnet_analyzer import analyze as _ba_analyze
+    _BIRDNET_AVAILABLE = True
+except Exception as e:
+    log.error("Failed to import birdnet_analyzer: %s", e)
+    _BIRDNET_AVAILABLE = False
 
 
-def _detect_cli() -> str | None:
-    for module in ("birdnet_analyzer.analyze", "birdnet_analyzer"):
-        r = subprocess.run(
-            ["python", PATCH_SCRIPT, module, "--help"],
-            capture_output=True, timeout=30,
-        )
-        if r.returncode == 0:
-            log.info("BirdNET CLI: %s (via birdnet_patch.py)", module)
-            return module
-    return None
-
-
-def _warm_up():
-    global _CLI_MODULE
-    log.info("Detecting birdnet_analyzer CLI…")
-    _CLI_MODULE = _detect_cli()
-    if _CLI_MODULE is None:
-        log.error("birdnet_analyzer CLI not found — check installation")
-        return
-
-    # Mark ready immediately after CLI detection.
-    # The first real /analyze request will be slow (model loads on demand),
-    # but the app becomes available right away instead of hanging for minutes.
-    log.info("BirdNET CLI detected (%s) — marking ready ✓", _CLI_MODULE)
-    _birdnet_ready.set()
-
-
-def _write_silent_wav(path: str, duration_s: int = 1, sample_rate: int = 48000):
-    import struct
+def _write_silent_wav(path: str, duration_s: int = 3, sample_rate: int = 48000):
+    """Write a silent WAV file to warm up the model."""
     n_samples = duration_s * sample_rate
     data_size = n_samples * 2
     with open(path, "wb") as f:
@@ -110,26 +76,34 @@ def _write_silent_wav(path: str, duration_s: int = 1, sample_rate: int = 48000):
         f.write(b"\x00" * data_size)
 
 
-def _run_analysis(audio_path, out_dir, lat, lon, week,
-                  sensitivity, locale, min_conf=0.1,
-                  timeout=120) -> dict[str, float]:
-    cmd = [
-        "python", PATCH_SCRIPT, _CLI_MODULE,
-        audio_path,          # positional INPUT argument (no flag in newer versions)
-        "--output", out_dir,
-        "--lat", str(lat),
-        "--lon", str(lon),
-        "--week", str(week),
-        "--sensitivity", str(sensitivity),
-        "--locale", locale,
-        "--min_conf", str(min_conf),
-        "--rtype", "csv",
-    ]
-    log.info("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    if result.returncode != 0:
-        log.warning("birdnet returncode=%d stderr: %s", result.returncode, result.stderr[-800:])
+def _warm_up():
+    """Load the BirdNET model by running a dummy analysis at startup."""
+    if not _BIRDNET_AVAILABLE:
+        return
 
+    log.info("Warming up BirdNET model (first analysis loads tensorflow + model)…")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dummy_wav = os.path.join(tmpdir, "silence.wav")
+        out_dir = os.path.join(tmpdir, "out")
+        os.makedirs(out_dir)
+        _write_silent_wav(dummy_wav)
+        try:
+            _ba_analyze(
+                audio_input=dummy_wav,
+                output=out_dir,
+                rtype="csv",
+                min_conf=0.1,
+                show_progress=False,
+            )
+            log.info("BirdNET model loaded and ready ✓")
+        except Exception as e:
+            log.warning("Warm-up analysis failed (model may still load on first request): %s", e)
+
+    _birdnet_ready.set()
+
+
+def _parse_detections(out_dir: str) -> dict[str, float]:
+    """Read detection CSVs written by birdnet_analyzer and return {label: confidence}."""
     detections: dict[str, float] = {}
     for fname in os.listdir(out_dir):
         if not fname.endswith(".csv"):
@@ -140,16 +114,22 @@ def _run_analysis(audio_path, out_dir, lat, lon, week,
             f.seek(0)
             delim = ";" if ";" in sample else ","
             for row in csv.DictReader(f, delimiter=delim):
-                common = (row.get("Common name") or row.get("common_name") or "").strip()
-                scientific = (row.get("Scientific name") or row.get("scientific_name") or "").strip()
+                # birdnet_analyzer v2.4 columns: Common name, Scientific name, Confidence
+                common = (
+                    row.get("Common name") or row.get("common_name")
+                    or row.get("species_name") or ""
+                ).strip()
+                scientific = (
+                    row.get("Scientific name") or row.get("scientific_name") or ""
+                ).strip()
                 try:
                     conf = float(row.get("Confidence") or row.get("confidence") or 0)
                 except ValueError:
                     continue
-                if common and scientific and conf > 0:
-                    key = f"{common}_{scientific}"
-                    if key not in detections or conf > detections[key]:
-                        detections[key] = conf
+                if common and conf > 0:
+                    label = f"{common}_{scientific}" if scientific else common
+                    if label not in detections or conf > detections[label]:
+                        detections[label] = conf
     return detections
 
 
@@ -201,18 +181,28 @@ async def analyze(
         os.makedirs(out_dir)
 
         try:
-            detections = _run_analysis(
-                audio_path, out_dir,
-                lat=lat, lon=lon, week=week,
-                sensitivity=sensitivity, locale=locale,
-                timeout=300,
-            )
-        except subprocess.TimeoutExpired:
+            with _analyze_lock:
+                _ba_analyze(
+                    audio_input=audio_path,
+                    output=out_dir,
+                    lat=lat if lat != -1 else None,
+                    lon=lon if lon != -1 else None,
+                    week=week if week != -1 else None,
+                    sensitivity=sensitivity,
+                    locale=locale,
+                    min_conf=0.1,
+                    rtype="csv",
+                    show_progress=False,
+                )
+        except Exception as e:
+            log.exception("BirdNET analysis error: %s", e)
             return JSONResponse(
-                {"msg": "Error", "detail": "Analysis timed out"},
-                status_code=504,
+                {"msg": "Error", "detail": str(e)},
+                status_code=500,
                 headers={"Access-Control-Allow-Origin": "*"},
             )
+
+        detections = _parse_detections(out_dir)
 
     return JSONResponse(
         {"msg": "Success.", "results": {"detections": detections}},
@@ -220,9 +210,7 @@ async def analyze(
     )
 
 
-# ---------------------------------------------------------------------------
-# iNaturalist Vision proxy — service token stays on the server
-# ---------------------------------------------------------------------------
+# ── iNaturalist Vision proxy ──────────────────────────────────────────────────
 
 @app.post("/identify/image")
 async def identify_image(
@@ -258,9 +246,7 @@ async def identify_image(
     )
 
 
-# ---------------------------------------------------------------------------
-# eBird proxy — service API key stays on the server
-# ---------------------------------------------------------------------------
+# ── eBird / iNaturalist nearby proxy ─────────────────────────────────────────
 
 @app.get("/nearby")
 async def nearby(
@@ -268,7 +254,6 @@ async def nearby(
     lng: float = Query(...),
     dist: float = Query(25),
 ):
-    """Return recent bird observations near a location via iNaturalist."""
     headers = {}
     if INAT_TOKEN:
         headers["Authorization"] = f"Bearer {INAT_TOKEN}"
@@ -277,7 +262,7 @@ async def nearby(
         resp = await client.get(
             "https://api.inaturalist.org/v1/observations",
             params={
-                "taxon_id": 3,          # Aves
+                "taxon_id": 3,
                 "lat": lat,
                 "lng": lng,
                 "radius": dist,
@@ -296,7 +281,6 @@ async def nearby(
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    # Deduplicate by taxon and normalise to a simple list
     seen: set[int] = set()
     results = []
     for obs in resp.json().get("results", []):
