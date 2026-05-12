@@ -9,13 +9,16 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# tflite-runtime standalone is incompatible with birdnet-analyzer model format.
-# tensorflow-cpu includes a working TFLite runtime; birdnet-analyzer falls back
-# to `from tensorflow import lite as tflite` when tflite-runtime is absent.
+# tensorflow-cpu provides a working TFLite runtime for birdnet-analyzer
 RUN pip install --no-cache-dir tensorflow-cpu && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY app.py birdnet_patch.py ./
+# Pre-download BirdNET model weights into the image layer
+# (avoids 20-min cold-start download on every Render restart)
+COPY download_model.py .
+RUN python download_model.py
+
+COPY app.py ./
 
 ENV PORT=8080
 EXPOSE 8080
