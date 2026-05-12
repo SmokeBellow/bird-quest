@@ -93,7 +93,6 @@ def _warm_up():
                 output=out_dir,
                 rtype="csv",
                 min_conf=0.1,
-                show_progress=False,
             )
             log.info("BirdNET model loaded and ready ✓")
         except Exception as e:
@@ -192,7 +191,6 @@ async def analyze(
                     locale=locale,
                     min_conf=0.1,
                     rtype="csv",
-                    show_progress=False,
                 )
         except Exception as e:
             log.exception("BirdNET analysis error: %s", e)
