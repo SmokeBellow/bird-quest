@@ -92,20 +92,17 @@ async function fetchVisionResults(
   if (lat !== undefined) formData.append('lat', lat.toString())
   if (lng !== undefined) formData.append('lng', lng.toString())
 
-  const res = await fetch(`${getBirdNetUrl()}/identify/image`, {
+  // Call iNaturalist Vision API directly from the browser — supports CORS,
+  // no token required for basic usage (rate limit: ~100 req/day per IP).
+  const res = await fetch(`${INAT_BASE}/computervision/score_image`, {
     method: 'POST',
     body: formData,
   })
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    if (res.status === 503)
-      throw new Error('Сервис определения по фото недоступен — токен iNaturalist не настроен на сервере.')
-    if (res.status === 401 || res.status === 403)
-      throw new Error('Ошибка авторизации iNaturalist. Обратитесь к администратору.')
     if (res.status === 429)
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
-    throw new Error(`Ошибка сервера ${res.status}: ${text.slice(0, 100)}`)
+    throw new Error(`Ошибка iNaturalist ${res.status}`)
   }
 
   const data = await res.json()
