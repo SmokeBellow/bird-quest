@@ -28,7 +28,7 @@ jobs:
       - run: npm ci
 
       - name: Apply DB migrations
-        run: npx supabase db push --linked --yes
+        run: npx supabase link --project-ref gzncftzyiafbvncwnsxc && npx supabase db push --yes
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
