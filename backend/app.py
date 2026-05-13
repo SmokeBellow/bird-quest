@@ -215,12 +215,16 @@ async def identify_image(
 
 # ── eBird / iNaturalist nearby proxy ─────────────────────────────────────────
 
+_TAXON_IDS = {"birds": 3, "plants": 47126, "fungi": 47170}
+
 @app.get("/nearby")
 async def nearby(
     lat: float = Query(...),
     lng: float = Query(...),
     dist: float = Query(25),
+    taxon: str = Query("birds"),
 ):
+    taxon_id = _TAXON_IDS.get(taxon, 3)
     headers = {}
     if INAT_TOKEN:
         headers["Authorization"] = f"Bearer {INAT_TOKEN}"
@@ -229,7 +233,7 @@ async def nearby(
         resp = await client.get(
             "https://api.inaturalist.org/v1/observations",
             params={
-                "taxon_id": 3,
+                "taxon_id": taxon_id,
                 "lat": lat,
                 "lng": lng,
                 "radius": dist,
@@ -251,20 +255,32 @@ async def nearby(
     seen: set[int] = set()
     results = []
     for obs in resp.json().get("results", []):
-        taxon = obs.get("taxon")
-        if not taxon:
+        taxon_obj = obs.get("taxon")
+        if not taxon_obj:
             continue
-        tid = taxon.get("id")
+        tid = taxon_obj.get("id")
         if tid in seen:
             continue
         seen.add(tid)
-        photo = taxon.get("default_photo") or {}
+        photo = taxon_obj.get("default_photo") or {}
+        # Parse lat/lng from observation location "lat,lng"
+        obs_lat, obs_lng = None, None
+        loc = obs.get("location")
+        if loc:
+            try:
+                parts = loc.split(",")
+                obs_lat = float(parts[0])
+                obs_lng = float(parts[1])
+            except Exception:
+                pass
         results.append({
             "speciesCode": str(tid),
-            "comName": taxon.get("preferred_common_name") or taxon.get("name", ""),
-            "sciName": taxon.get("name", ""),
+            "comName": taxon_obj.get("preferred_common_name") or taxon_obj.get("name", ""),
+            "sciName": taxon_obj.get("name", ""),
             "obsDt": obs.get("observed_on", ""),
             "thumbnailUrl": photo.get("square_url"),
+            "lat": obs_lat,
+            "lng": obs_lng,
         })
 
     return JSONResponse(results, headers={"Access-Control-Allow-Origin": "*"})

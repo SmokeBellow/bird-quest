@@ -140,7 +140,11 @@ export interface NearbyBird {
   sciName: string
   obsDt: string
   thumbnailUrl?: string
+  lat?: number
+  lng?: number
 }
+
+export type NearbyTaxon = 'birds' | 'plants' | 'fungi'
 
 export interface IdentifyResult {
   bird: Bird
