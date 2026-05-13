@@ -92,16 +92,26 @@ async function fetchVisionResults(
   if (lat !== undefined) formData.append('lat', lat.toString())
   if (lng !== undefined) formData.append('lng', lng.toString())
 
-  // Call iNaturalist Vision API directly from the browser — supports CORS,
-  // no token required for basic usage (rate limit: ~100 req/day per IP).
-  const res = await fetch(`${INAT_BASE}/computervision/score_image`, {
+  // Route through our backend proxy — it adds the iNaturalist Bearer token.
+  // Fallback: try iNaturalist directly (works only if API allows unauthenticated).
+  const backendBase = getBirdNetUrl()
+  const useProxy = backendBase !== '/birdnet'
+  const url = useProxy
+    ? `${backendBase}/identify/image`
+    : `${INAT_BASE}/computervision/score_image`
+
+  const res = await fetch(url, {
     method: 'POST',
     body: formData,
   })
 
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403)
+      throw new Error('Ошибка авторизации iNaturalist. Проверь настройки сервера.')
     if (res.status === 429)
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
+    if (res.status === 503)
+      throw new Error('Сервер не настроен: отсутствует токен iNaturalist.')
     throw new Error(`Ошибка iNaturalist ${res.status}`)
   }
 
