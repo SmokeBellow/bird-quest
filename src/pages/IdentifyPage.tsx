@@ -406,144 +406,237 @@ export function IdentifyPage() {
             </button>
           )}
 
-          {photoResults && (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">
-                Похожие варианты — выбери правильный:
-              </p>
-              {photoResults.map((r, i) => {
-                const pct = Math.round((r.confidence || 0) * 100)
-                const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
-                return (
-                  <button
-                    key={i}
-                    onClick={() => addBird(r.bird, 'photo')}
-                    className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
-                  >
-                    {r.bird.thumbnailUrl ? (
-                      <img src={r.bird.thumbnailUrl} alt={r.bird.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🐦</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-white truncate">{r.bird.commonName}</p>
-                      <p className="text-xs text-gray-500 italic truncate mb-1">{r.bird.scientificName}</p>
-                      <ConfidenceBar value={r.confidence} />
+          {photoResults && photoResults.length > 0 && (() => {
+            const [top, ...rest] = photoResults
+            const topPct = Math.round((isNaN(top.confidence) ? 0 : top.confidence) * 100)
+            const topColor = topPct >= 60 ? 'text-green-400' : topPct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+            return (
+              <div className="space-y-3">
+                {/* Top result — big card */}
+                <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+                  {top.bird.imageUrl || top.bird.thumbnailUrl ? (
+                    <img
+                      src={top.bird.imageUrl || top.bird.thumbnailUrl}
+                      alt={top.bird.commonName}
+                      className="w-full h-52 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🐦</div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0">
+                        <p className="text-xl font-bold text-white leading-tight">{top.bird.commonName}</p>
+                        <p className="text-sm text-gray-500 italic">{top.bird.scientificName}</p>
+                      </div>
+                      <span className={`text-2xl font-bold flex-shrink-0 ${topColor}`}>{topPct}%</span>
                     </div>
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                      <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
-                      <CheckCircle size={16} className="text-forest-500" />
-                    </div>
-                  </button>
-                )
-              })}
-              <p className="text-xs text-gray-600 text-center">
-                Уверенность &lt; 65% — выбери нужный вариант
-              </p>
-            </div>
-          )}
+                    <button
+                      onClick={() => addBird(top.bird, 'photo')}
+                      className="mt-3 w-full bg-forest-700 hover:bg-forest-600 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle size={16} /> Добавить в коллекцию
+                    </button>
+                  </div>
+                </div>
 
-          {plantResults && (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">
-                Результаты определения растения:
-              </p>
-              {plantResults.map((r, i) => {
-                const pct = Math.round((r.confidence || 0) * 100)
-                const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
-                const isAdded = addedPlantIds.has(r.id) || hasObservedPlant(r.id)
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800"
-                  >
-                    {r.thumbnailUrl ? (
-                      <img src={r.thumbnailUrl} alt={r.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🌿</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-white truncate">{r.commonName}</p>
-                      <p className="text-xs text-gray-500 italic truncate">{r.scientificName}</p>
-                      {r.family && <p className="text-xs text-emerald-600 truncate">{r.family}</p>}
-                      <ConfidenceBar value={r.confidence} />
+                {/* Alternatives */}
+                {rest.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 px-1">Также может быть:</p>
+                    <div className="space-y-2">
+                      {rest.map((r, i) => {
+                        const pct = Math.round((isNaN(r.confidence) ? 0 : r.confidence) * 100)
+                        const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => addBird(r.bird, 'photo')}
+                            className="w-full flex items-center gap-3 bg-gray-900 hover:bg-gray-800 rounded-xl p-3 transition-colors border border-gray-800 text-left"
+                          >
+                            {r.bird.thumbnailUrl ? (
+                              <img src={r.bird.thumbnailUrl} alt={r.bird.commonName} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-xl">🐦</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">{r.bird.commonName}</p>
+                              <p className="text-xs text-gray-500 italic truncate">{r.bird.scientificName}</p>
+                            </div>
+                            <span className={`text-base font-bold flex-shrink-0 ${confColor}`}>{pct}%</span>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {plantResults && plantResults.length > 0 && (() => {
+            const [top, ...rest] = plantResults
+            const topPct = Math.round((isNaN(top.confidence) ? 0 : top.confidence) * 100)
+            const topColor = topPct >= 60 ? 'text-green-400' : topPct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+            const topAdded = addedPlantIds.has(top.id) || hasObservedPlant(top.id)
+            return (
+              <div className="space-y-3">
+                <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+                  {top.imageUrl || top.thumbnailUrl ? (
+                    <img src={top.imageUrl || top.thumbnailUrl} alt={top.commonName} className="w-full h-52 object-cover" />
+                  ) : (
+                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🌿</div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0">
+                        <p className="text-xl font-bold text-white leading-tight">{top.commonName}</p>
+                        <p className="text-sm text-gray-500 italic">{top.scientificName}</p>
+                        {top.family && <p className="text-xs text-emerald-500 mt-0.5">{top.family}</p>}
+                      </div>
+                      <span className={`text-2xl font-bold flex-shrink-0 ${topColor}`}>{topPct}%</span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
                       <button
-                        onClick={() => !isAdded && addPlantToCollection(r)}
-                        disabled={isAdded}
-                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
-                          isAdded
-                            ? 'bg-emerald-900 text-emerald-400 cursor-default'
-                            : 'bg-emerald-700 hover:bg-emerald-600 text-white'
-                        }`}
+                        onClick={() => !topAdded && addPlantToCollection(top)}
+                        disabled={topAdded}
+                        className={`flex-1 font-semibold py-2.5 rounded-xl transition-colors ${topAdded ? 'bg-emerald-900 text-emerald-400 cursor-default' : 'bg-emerald-700 hover:bg-emerald-600 text-white'}`}
                       >
-                        {isAdded ? '✓ Добавлено' : '+ В коллекцию'}
+                        {topAdded ? '✓ Добавлено' : '+ В коллекцию'}
                       </button>
-                      {r.wikipediaUrl && (
-                        <a
-                          href={r.wikipediaUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-400 hover:underline"
-                        >
+                      {top.wikipediaUrl && (
+                        <a href={top.wikipediaUrl} target="_blank" rel="noopener noreferrer"
+                          className="px-4 py-2.5 rounded-xl bg-gray-800 text-blue-400 hover:bg-gray-700 font-semibold text-sm flex items-center">
                           Wiki
                         </a>
                       )}
                     </div>
                   </div>
-                )
-              })}
-              <button onClick={clearImage} className="text-sm text-gray-500 underline mx-auto block">
-                Попробовать другое фото
-              </button>
-            </div>
-          )}
+                </div>
 
-          {fungusResults && (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-gray-300">Результаты определения гриба:</p>
-              {fungusResults.map((r, i) => {
-                const pct = Math.round((r.confidence || 0) * 100)
-                const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
-                const isAdded = addedFungusIds.has(r.id) || hasObservedFungus(r.id)
-                return (
-                  <div key={i} className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800">
-                    {r.thumbnailUrl ? (
-                      <img src={r.thumbnailUrl} alt={r.commonName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-2xl">🍄</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-white truncate">{r.commonName}</p>
-                      <p className="text-xs text-gray-500 italic truncate">{r.scientificName}</p>
-                      {r.family && <p className="text-xs text-amber-700 truncate">{r.family}</p>}
-                      <ConfidenceBar value={r.confidence} />
+                {rest.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 px-1">Также может быть:</p>
+                    <div className="space-y-2">
+                      {rest.map((r, i) => {
+                        const pct = Math.round((isNaN(r.confidence) ? 0 : r.confidence) * 100)
+                        const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                        const isAdded = addedPlantIds.has(r.id) || hasObservedPlant(r.id)
+                        return (
+                          <div key={i} className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800">
+                            {r.thumbnailUrl ? (
+                              <img src={r.thumbnailUrl} alt={r.commonName} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-xl">🌿</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">{r.commonName}</p>
+                              <p className="text-xs text-gray-500 italic truncate">{r.scientificName}</p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`text-base font-bold ${confColor}`}>{pct}%</span>
+                              <button
+                                onClick={() => !isAdded && addPlantToCollection(r)}
+                                disabled={isAdded}
+                                className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${isAdded ? 'bg-emerald-900 text-emerald-400 cursor-default' : 'bg-emerald-700 hover:bg-emerald-600 text-white'}`}
+                              >
+                                {isAdded ? '✓' : '+'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      <span className={`text-lg font-bold ${confColor}`}>{pct}%</span>
+                  </div>
+                )}
+                <button onClick={clearImage} className="text-sm text-gray-500 underline mx-auto block">
+                  Попробовать другое фото
+                </button>
+              </div>
+            )
+          })()}
+
+          {fungusResults && fungusResults.length > 0 && (() => {
+            const [top, ...rest] = fungusResults
+            const topPct = Math.round((isNaN(top.confidence) ? 0 : top.confidence) * 100)
+            const topColor = topPct >= 60 ? 'text-green-400' : topPct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+            const topAdded = addedFungusIds.has(top.id) || hasObservedFungus(top.id)
+            return (
+              <div className="space-y-3">
+                <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+                  {top.imageUrl || top.thumbnailUrl ? (
+                    <img src={top.imageUrl || top.thumbnailUrl} alt={top.commonName} className="w-full h-52 object-cover" />
+                  ) : (
+                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🍄</div>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0">
+                        <p className="text-xl font-bold text-white leading-tight">{top.commonName}</p>
+                        <p className="text-sm text-gray-500 italic">{top.scientificName}</p>
+                        {top.family && <p className="text-xs text-amber-600 mt-0.5">{top.family}</p>}
+                      </div>
+                      <span className={`text-2xl font-bold flex-shrink-0 ${topColor}`}>{topPct}%</span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
                       <button
-                        onClick={() => !isAdded && addFungusToCollection(r)}
-                        disabled={isAdded}
-                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
-                          isAdded ? 'bg-amber-900 text-amber-400 cursor-default' : 'bg-amber-700 hover:bg-amber-600 text-white'
-                        }`}
+                        onClick={() => !topAdded && addFungusToCollection(top)}
+                        disabled={topAdded}
+                        className={`flex-1 font-semibold py-2.5 rounded-xl transition-colors ${topAdded ? 'bg-amber-900 text-amber-400 cursor-default' : 'bg-amber-700 hover:bg-amber-600 text-white'}`}
                       >
-                        {isAdded ? '✓ Добавлено' : '+ В коллекцию'}
+                        {topAdded ? '✓ Добавлено' : '+ В коллекцию'}
                       </button>
-                      {r.wikipediaUrl && (
-                        <a href={r.wikipediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline">Wiki</a>
+                      {top.wikipediaUrl && (
+                        <a href={top.wikipediaUrl} target="_blank" rel="noopener noreferrer"
+                          className="px-4 py-2.5 rounded-xl bg-gray-800 text-blue-400 hover:bg-gray-700 font-semibold text-sm flex items-center">
+                          Wiki
+                        </a>
                       )}
                     </div>
                   </div>
-                )
-              })}
-              <button onClick={clearImage} className="text-sm text-gray-500 underline mx-auto block">
-                Попробовать другое фото
-              </button>
-            </div>
-          )}
+                </div>
+
+                {rest.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2 px-1">Также может быть:</p>
+                    <div className="space-y-2">
+                      {rest.map((r, i) => {
+                        const pct = Math.round((isNaN(r.confidence) ? 0 : r.confidence) * 100)
+                        const confColor = pct >= 60 ? 'text-green-400' : pct >= 35 ? 'text-yellow-400' : 'text-orange-400'
+                        const isAdded = addedFungusIds.has(r.id) || hasObservedFungus(r.id)
+                        return (
+                          <div key={i} className="flex items-center gap-3 bg-gray-900 rounded-xl p-3 border border-gray-800">
+                            {r.thumbnailUrl ? (
+                              <img src={r.thumbnailUrl} alt={r.commonName} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center flex-shrink-0 text-xl">🍄</div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">{r.commonName}</p>
+                              <p className="text-xs text-gray-500 italic truncate">{r.scientificName}</p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`text-base font-bold ${confColor}`}>{pct}%</span>
+                              <button
+                                onClick={() => !isAdded && addFungusToCollection(r)}
+                                disabled={isAdded}
+                                className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${isAdded ? 'bg-amber-900 text-amber-400 cursor-default' : 'bg-amber-700 hover:bg-amber-600 text-white'}`}
+                              >
+                                {isAdded ? '✓' : '+'}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                <button onClick={clearImage} className="text-sm text-gray-500 underline mx-auto block">
+                  Попробовать другое фото
+                </button>
+              </div>
+            )
+          })()}
         </div>
       )}
 
