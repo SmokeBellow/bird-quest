@@ -100,10 +100,16 @@ async function fetchVisionResults(
     ? `${backendBase}/identify/image`
     : `${INAT_BASE}/computervision/score_image`
 
-  const res = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: AbortSignal.timeout(30000),
+    })
+  } catch {
+    throw new Error('Сервер недоступен. Подожди 30–60 секунд — он просыпается после простоя.')
+  }
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403)
@@ -111,7 +117,7 @@ async function fetchVisionResults(
     if (res.status === 429)
       throw new Error('Превышен лимит запросов iNaturalist. Подожди минуту и попробуй снова.')
     if (res.status === 503)
-      throw new Error('Сервер не настроен: отсутствует токен iNaturalist.')
+      throw new Error('Сервер просыпается, подожди 30–60 секунд и попробуй снова.')
     throw new Error(`Ошибка iNaturalist ${res.status}`)
   }
 
