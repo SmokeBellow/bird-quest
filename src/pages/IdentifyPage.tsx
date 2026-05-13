@@ -419,10 +419,18 @@ export function IdentifyPage() {
                       src={top.bird.imageUrl || top.bird.thumbnailUrl}
                       alt={top.bird.commonName}
                       className="w-full h-52 object-cover"
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (top.bird.thumbnailUrl && el.src !== top.bird.thumbnailUrl) {
+                          el.src = top.bird.thumbnailUrl
+                        } else {
+                          el.style.display = 'none'
+                          el.parentElement!.querySelector('.img-fallback')?.classList.remove('hidden')
+                        }
+                      }}
                     />
-                  ) : (
-                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🐦</div>
-                  )}
+                  ) : null}
+                  <div className={`img-fallback w-full h-52 bg-gray-800 flex items-center justify-center text-6xl ${top.bird.imageUrl || top.bird.thumbnailUrl ? 'hidden' : ''}`}>🐦</div>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <div className="min-w-0">
@@ -483,10 +491,22 @@ export function IdentifyPage() {
               <div className="space-y-3">
                 <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
                   {top.imageUrl || top.thumbnailUrl ? (
-                    <img src={top.imageUrl || top.thumbnailUrl} alt={top.commonName} className="w-full h-52 object-cover" />
-                  ) : (
-                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🌿</div>
-                  )}
+                    <img
+                      src={top.imageUrl || top.thumbnailUrl}
+                      alt={top.commonName}
+                      className="w-full h-52 object-cover"
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (top.thumbnailUrl && el.src !== top.thumbnailUrl) {
+                          el.src = top.thumbnailUrl
+                        } else {
+                          el.style.display = 'none'
+                          el.parentElement!.querySelector('.img-fallback')?.classList.remove('hidden')
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <div className={`img-fallback w-full h-52 bg-gray-800 flex items-center justify-center text-6xl ${top.imageUrl || top.thumbnailUrl ? 'hidden' : ''}`}>🌿</div>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <div className="min-w-0">
@@ -565,10 +585,22 @@ export function IdentifyPage() {
               <div className="space-y-3">
                 <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
                   {top.imageUrl || top.thumbnailUrl ? (
-                    <img src={top.imageUrl || top.thumbnailUrl} alt={top.commonName} className="w-full h-52 object-cover" />
-                  ) : (
-                    <div className="w-full h-52 bg-gray-800 flex items-center justify-center text-6xl">🍄</div>
-                  )}
+                    <img
+                      src={top.imageUrl || top.thumbnailUrl}
+                      alt={top.commonName}
+                      className="w-full h-52 object-cover"
+                      onError={(e) => {
+                        const el = e.currentTarget
+                        if (top.thumbnailUrl && el.src !== top.thumbnailUrl) {
+                          el.src = top.thumbnailUrl
+                        } else {
+                          el.style.display = 'none'
+                          el.parentElement!.querySelector('.img-fallback')?.classList.remove('hidden')
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <div className={`img-fallback w-full h-52 bg-gray-800 flex items-center justify-center text-6xl ${top.imageUrl || top.thumbnailUrl ? 'hidden' : ''}`}>🍄</div>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <div className="min-w-0">
