@@ -18,7 +18,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { IdentifyResult, Bird } from '../types'
 
 function ConfidenceBar({ value }: { value: number }) {
-  const pct = Math.round(value * 100)
+  const pct = Math.round((isNaN(value) ? 0 : value) * 100)
   const color = pct > 70 ? 'bg-green-500' : pct > 40 ? 'bg-yellow-500' : 'bg-orange-500'
   return (
     <div className="flex items-center gap-2">

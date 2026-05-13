@@ -134,7 +134,10 @@ export async function identifyFromImage(
 
   // Prefer combined_score (vision + location) over vision-only score.
   // Normalize relative to sum so the top result gets an intuitive %.
-  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const getScore = (r: INatScoreResult) => {
+    const v = r.combined_score ?? r.score ?? r.vision_score ?? 0
+    return typeof v === 'number' && isFinite(v) ? v : 0
+  }
   const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
   return filtered.map((r) => ({
     bird: taxonToBird(r.taxon),
@@ -167,7 +170,10 @@ export async function identifyPlantFromImage(
       return iconic === 'plantae' || r.taxon.ancestor_ids?.includes(47126)
     })
     .slice(0, 5)
-  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const getScore = (r: INatScoreResult) => {
+    const v = r.combined_score ?? r.score ?? r.vision_score ?? 0
+    return typeof v === 'number' && isFinite(v) ? v : 0
+  }
   const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
   return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? getScore(r) / total : getScore(r)))
 }
@@ -184,7 +190,10 @@ export async function identifyFungusFromImage(
       return iconic === 'fungi' || r.taxon.ancestor_ids?.includes(47170)
     })
     .slice(0, 5)
-  const getScore = (r: INatScoreResult) => r.combined_score ?? r.score ?? r.vision_score ?? 0
+  const getScore = (r: INatScoreResult) => {
+    const v = r.combined_score ?? r.score ?? r.vision_score ?? 0
+    return typeof v === 'number' && isFinite(v) ? v : 0
+  }
   const total = filtered.reduce((sum, r) => sum + getScore(r), 0)
   return filtered.map((r) => scoreResultToPlantResult(r, total > 0 ? getScore(r) / total : getScore(r)))
 }
